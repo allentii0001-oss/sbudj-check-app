@@ -78,7 +78,7 @@ export const RetroactivePaymentView: React.FC<RetroactivePaymentViewProps> = ({ 
             workerDob: workerDobNormalized,
             month,
           };
-        }).filter((item): item is RetroactivePaymentItem => item !== null);
+        }).filter((item: RetroactivePaymentItem | null): item is RetroactivePaymentItem => item !== null);
         
         setRetroactiveData(formattedData);
       } catch (err) {

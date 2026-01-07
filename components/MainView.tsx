@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import type { ViewType } from '../types';
 import { getMonthName, MONTHS } from '../utils/helpers';
@@ -76,8 +75,8 @@ export const MainView: React.FC<MainViewProps> = ({
       </div>
 
       <div className="text-center mb-10">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-800">활동지원사 {baseYear}</h1>
-        <p className="text-lg text-gray-600 mt-2">서류 제출 확인 시스템</p>
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800">활동지원사 월별 서류 확인</h1>
+        <p className="text-lg text-gray-600 mt-2">{baseYear}년 시스템</p>
         
         <div className="mt-8 flex flex-col items-center space-y-4">
             <div className="flex items-center space-x-2">

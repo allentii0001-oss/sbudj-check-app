@@ -21,6 +21,14 @@ export const DOC_TYPES = {
     retroactivePayment: "소급결제"
 };
 
+/**
+ * Generates a unique key for submission data based on client, year, and month.
+ * Format: `${clientId}-${year}-${monthIndex}`
+ */
+export const getSubmissionKey = (clientId: string, year: number, monthIndex: number): string => {
+    return `${clientId}-${year}-${monthIndex}`;
+};
+
 export const normalizeDob = (dobInput: any): string => {
   if (!dobInput) return '';
 

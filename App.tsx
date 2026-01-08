@@ -8,6 +8,7 @@ import { SubmissionInputView } from './components/SubmissionInputView';
 import { UnsubmittedView } from './components/UnsubmittedView';
 import { RetroactivePaymentView } from './components/RetroactivePaymentView';
 import { initializeMsal, signIn, signOut, uploadDataToCloud, downloadDataFromCloud } from './services/onedrive';
+import { getSubmissionKey } from './utils/helpers';
 
 const initialClients: Client[] = [
     {
@@ -50,6 +51,65 @@ export default function App() {
 
   // File System Access State
   const [fileHandle, setFileHandle] = useState<any>(null);
+
+  // --- Data Migration for Year Support ---
+  useEffect(() => {
+    let hasChanges = false;
+    
+    // 1. Migrate Submission Data keys from "id-month" to "id-year-month"
+    const newSubmissionData = { ...submissionData };
+    Object.keys(newSubmissionData).forEach(key => {
+        const parts = key.split('-');
+        // Basic check: if strictly 2 parts "id-month" OR last part is month index and 2nd last is NOT a year
+        const lastPart = parts[parts.length - 1];
+        const secondLastPart = parts.length > 1 ? parts[parts.length - 2] : null;
+        
+        const isYear = secondLastPart && /^\d{4}$/.test(secondLastPart);
+        
+        if (!isYear) {
+            // Assume it's old format. Migrate to current baseYear.
+            const monthIndex = parseInt(lastPart, 10);
+            if (!isNaN(monthIndex)) {
+                const idPart = parts.slice(0, -1).join('-'); // Handle IDs with hyphens
+                const newKey = getSubmissionKey(idPart, baseYear, monthIndex);
+                
+                if (!newSubmissionData[newKey]) {
+                    newSubmissionData[newKey] = newSubmissionData[key];
+                }
+                delete newSubmissionData[key];
+                hasChanges = true;
+            }
+        }
+    });
+
+    // 2. Migrate Retroactive Hashes keys
+    const newRetroHashes = { ...retroactiveHashes };
+    Object.keys(newRetroHashes).forEach(key => {
+         const parts = key.split('-');
+         const lastPart = parts[parts.length - 1];
+         const secondLastPart = parts.length > 1 ? parts[parts.length - 2] : null;
+         const isYear = secondLastPart && /^\d{4}$/.test(secondLastPart);
+
+         if (!isYear) {
+             const monthIndex = parseInt(lastPart, 10);
+             if (!isNaN(monthIndex)) {
+                 const idPart = parts.slice(0, -1).join('-');
+                 const newKey = getSubmissionKey(idPart, baseYear, monthIndex);
+                 if (!newRetroHashes[newKey]) {
+                    newRetroHashes[newKey] = newRetroHashes[key];
+                 }
+                 delete newRetroHashes[key];
+                 hasChanges = true;
+             }
+         }
+    });
+
+    if (hasChanges) {
+        setSubmissionData(newSubmissionData);
+        setRetroactiveHashes(newRetroHashes);
+        console.log("Legacy data migrated to include year in keys.");
+    }
+  }, []); // Run once on mount
 
   // Initialize MSAL when clientId changes
   useEffect(() => {

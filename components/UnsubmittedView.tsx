@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import type { Client, SubmissionData, RetroactivePaymentItem } from '../types';
-import { getMonthName, MONTHS, DOC_TYPES, normalizeDob, isWorkerActiveInMonth, isClientActiveInMonth } from '../utils/helpers';
+import { getMonthName, MONTHS, DOC_TYPES, normalizeDob, isWorkerActiveInMonth, isClientActiveInMonth, getSubmissionKey } from '../utils/helpers';
 
 interface UnsubmittedViewProps {
   clients: Client[];
@@ -45,7 +45,7 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
             return { text: '지원사 X', color: 'bg-yellow-200 text-yellow-900' };
         }
 
-        const key = `${client.id}-${month}`;
+        const key = getSubmissionKey(client.id, baseYear, month);
         const monthStatus = submissionData[key];
 
         if (monthStatus?.noWork) {
@@ -54,13 +54,19 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
 
         if (docType === 'retroactivePayment') {
             const workersWithRetro = activeWorkers.filter(w => 
-                retroactiveData.some(item => 
+                retroactiveData.some(item => {
+                    // Check year from serviceStart if available
+                    const itemYear = new Date(item.serviceStart).getFullYear();
+                    // If invalid date, default to baseYear or skip check? Assuming valid date from parsing.
+                    const isSameYear = !isNaN(itemYear) ? itemYear === baseYear : true;
+
+                    return isSameYear &&
                     item.clientName === client.name && 
                     normalizeDob(item.clientDob) === normalizeDob(client.dob) && 
                     item.workerName === w.name && 
                     normalizeDob(item.workerDob) === normalizeDob(w.dob) &&
                     item.month === month
-                )
+                })
             );
             
             if (workersWithRetro.length === 0) {

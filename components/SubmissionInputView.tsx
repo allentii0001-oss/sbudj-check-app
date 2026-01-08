@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Client, SubmissionData, RetroactivePaymentItem, WorkerSubmissionStatus, SupportWorker, RetroactiveSubmissionStatus } from '../types';
 import { Modal } from './common/Modal';
-import { getMonthName, MONTHS, normalizeDob, isWorkerActiveInMonth, DOC_TYPES, formatDobToYYMMDD, formatDateTime, isClientActiveInMonth } from '../utils/helpers';
+import { getMonthName, MONTHS, normalizeDob, isWorkerActiveInMonth, DOC_TYPES, formatDobToYYMMDD, formatDateTime, isClientActiveInMonth, getSubmissionKey } from '../utils/helpers';
 import { SupportWorkerModal } from './common/SupportWorkerModal';
 
 const RetroactiveDetailModal: React.FC<{
@@ -83,7 +83,7 @@ const DocumentDrawerModal: React.FC<{
     client: Client;
     setClients: React.Dispatch<React.SetStateAction<Client[]>>;
     submissionData: SubmissionData;
-    onSave: (clientId: string, month: number, update: { workerId?: string; docType?: keyof WorkerSubmissionStatus; value?: boolean; noWork?: boolean }) => void;
+    onSave: (clientId: string, year: number, month: number, update: { workerId?: string; docType?: keyof WorkerSubmissionStatus; value?: boolean; noWork?: boolean }) => void;
     retroactiveData: RetroactivePaymentItem[];
     retroactiveSubmissions: RetroactiveSubmissionStatus;
     setRetroactiveSubmissions: React.Dispatch<React.SetStateAction<RetroactiveSubmissionStatus>>;
@@ -111,11 +111,11 @@ const DocumentDrawerModal: React.FC<{
     };
 
     const handleWorkerStatusChange = (workerId: string, docType: keyof WorkerSubmissionStatus, value: boolean) => {
-        onSave(client.id, activeTab, { workerId, docType, value });
+        onSave(client.id, baseYear, activeTab, { workerId, docType, value });
     };
 
     const handleNoWorkChange = (value: boolean) => {
-        onSave(client.id, activeTab, { noWork: value });
+        onSave(client.id, baseYear, activeTab, { noWork: value });
     };
 
     const handleSaveWorkers = (clientId: string, workers: SupportWorker[]) => {
@@ -138,11 +138,11 @@ const DocumentDrawerModal: React.FC<{
             if (workerRetroItems.length > 0) {
                 const areAllItemsChecked = workerRetroItems.every(item => newRetroSubmissions[item.id]);
                 
-                const key = `${client.id}-${activeTab}`;
+                const key = getSubmissionKey(client.id, baseYear, activeTab);
                 const currentSubmissionStatus = submissionData[key]?.workerSubmissions?.[worker.id]?.retroactivePayment ?? false;
 
                 if (currentSubmissionStatus !== areAllItemsChecked) {
-                    onSave(client.id, activeTab, { workerId: worker.id, docType: 'retroactivePayment', value: areAllItemsChecked });
+                    onSave(client.id, baseYear, activeTab, { workerId: worker.id, docType: 'retroactivePayment', value: areAllItemsChecked });
                 }
             }
         });
@@ -158,7 +158,7 @@ const DocumentDrawerModal: React.FC<{
 
     if (!isOpen) return null;
 
-    const key = `${client.id}-${activeTab}`;
+    const key = getSubmissionKey(client.id, baseYear, activeTab);
     const monthStatus = submissionData[key] || { noWork: false, workerSubmissions: {} };
     const applicability = getApplicability(activeTab);
     const isApplicable = applicability === 'applicable';
@@ -322,10 +322,11 @@ export const SubmissionInputView: React.FC<{
 
     const handleSaveSubmission = (
         clientId: string, 
+        year: number,
         month: number, 
         update: { workerId?: string; docType?: keyof WorkerSubmissionStatus; value?: boolean; noWork?: boolean }
     ) => {
-        const key = `${clientId}-${month}`;
+        const key = getSubmissionKey(clientId, year, month);
         setSubmissionData(prev => {
             const newSubmissionData = JSON.parse(JSON.stringify(prev)); // Deep copy
             const currentMonthData = newSubmissionData[key] || { noWork: false, workerSubmissions: {} };

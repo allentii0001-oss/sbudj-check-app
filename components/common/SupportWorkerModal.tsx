@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { Client, SupportWorker } from '../../types';
 import { Modal } from './Modal';
@@ -49,19 +50,19 @@ export const SupportWorkerModal: React.FC<{
                         </button>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">이름</label>
-                            <input type="text" value={worker.name} onChange={(e) => handleWorkerChange(index, 'name', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
+                            <input type="text" value={worker.name} onChange={(e) => handleWorkerChange(index, 'name', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">생년월일</label>
-                            <input type="date" value={worker.dob} onChange={(e) => handleWorkerChange(index, 'dob', e.target.value)} className="mt-1 block rounded-md border-gray-300 shadow-sm" />
+                            <input type="date" value={worker.dob} max="9999-12-31" onChange={(e) => handleWorkerChange(index, 'dob', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">계약일</label>
-                            <input type="date" value={worker.servicePeriod.start} onChange={(e) => handleWorkerChange(index, 'servicePeriod', { start: e.target.value })} className="mt-1 block rounded-md border-gray-300 shadow-sm" />
+                            <input type="date" value={worker.servicePeriod.start} max="9999-12-31" onChange={(e) => handleWorkerChange(index, 'servicePeriod', { start: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">해지일</label>
-                            <input type="date" value={worker.servicePeriod.end} onChange={(e) => handleWorkerChange(index, 'servicePeriod', { end: e.target.value })} className="mt-1 block rounded-md border-gray-300 shadow-sm" />
+                            <input type="date" value={worker.servicePeriod.end} max="9999-12-31" onChange={(e) => handleWorkerChange(index, 'servicePeriod', { end: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm" />
                         </div>
                     </div>
                 ))}

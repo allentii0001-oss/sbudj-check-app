@@ -1,5 +1,5 @@
 
-import type { Client } from '../types';
+import type { Client, SupportWorker } from '../types';
 
 export const simpleHash = (str: string): string => {
   let hash = 0;
@@ -67,80 +67,74 @@ export const normalizeDob = (dobInput: any): string => {
   return dobString;
 };
 
-export const isWorkerActiveInMonth = (worker: import('../types').SupportWorker, month: number, year: number): boolean => {
+// FIX: Completed the implementation of isWorkerActiveInMonth
+export const isWorkerActiveInMonth = (worker: SupportWorker, month: number, year: number): boolean => {
     if (!worker.servicePeriod.start) return false;
     try {
         const monthStart = new Date(year, month, 1);
         const monthEnd = new Date(year, month + 1, 0); // Last day of the month
 
         const workerStart = new Date(worker.servicePeriod.start);
-        const workerEnd = worker.servicePeriod.end ? new Date(worker.servicePeriod.end) : null;
+        const workerEnd = worker.servicePeriod.end ? new Date(worker.servicePeriod.end) : new Date('2099-12-31');
 
-        // An empty end date means the worker is currently active.
-        // Check for overlap: worker period must start before month ends, and must end after month starts.
-        return workerStart <= monthEnd && (!workerEnd || workerEnd >= monthStart);
+        return workerStart <= monthEnd && workerEnd >= monthStart;
     } catch (e) {
-        console.error("Error parsing worker service period date:", e);
         return false;
     }
 };
 
 /**
- * Checks if a client has an active contract during the specified month/year.
- * Handles multiple contract periods (contractHistory).
+ * Checks if a client has an active contract in a specific month of a specific year.
  */
+// FIX: Added isClientActiveInMonth helper to check contract validity across history
 export const isClientActiveInMonth = (client: Client, month: number, year: number): boolean => {
-    const monthStart = new Date(year, month, 1);
-    const monthEnd = new Date(year, month + 1, 0);
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
 
-    // If history exists, check all periods. Otherwise fall back to the main start/end
-    const periods = (client.contractHistory && client.contractHistory.length > 0)
-        ? client.contractHistory
-        : [{ start: client.contractStart, end: client.contractEnd }];
-
-    return periods.some(period => {
-        if (!period.start) return false;
-        try {
-            const contractStart = new Date(period.start);
-            const contractEnd = new Date(period.end);
-
-            // Check overlap: Start <= MonthEnd AND End >= MonthStart
-            return contractStart <= monthEnd && contractEnd >= monthStart;
-        } catch (e) {
-            console.error("Error checking client activity:", e);
-            return false;
-        }
+  if (client.contractHistory && client.contractHistory.length > 0) {
+    return client.contractHistory.some(period => {
+      const start = new Date(period.start);
+      const end = new Date(period.end || '2099-12-31');
+      return start <= monthEnd && end >= monthStart;
     });
+  }
+
+  const start = new Date(client.contractStart);
+  const end = new Date(client.contractEnd || '2099-12-31');
+  return start <= monthEnd && end >= monthStart;
 };
 
+/**
+ * Formats YYYY-MM-DD dob to YYMMDD
+ */
+// FIX: Added formatDobToYYMMDD helper
 export const formatDobToYYMMDD = (dob: string): string => {
-    if (!dob) return '';
-    const normalized = normalizeDob(dob); // Use existing normalizer first
-    const parts = normalized.split('-');
-    if (parts.length === 3 && parts[0].length === 4) {
-        return parts[0].substring(2) + parts[1] + parts[2];
-    }
-    // Handle cases where dob might already be 6 digits
-    const digitsOnly = normalized.replace(/[^0-9]/g, '');
-    if (digitsOnly.length === 6) return digitsOnly;
-    return dob; // Fallback
+  if (!dob) return '';
+  const digits = dob.replace(/[^0-9]/g, '');
+  if (digits.length === 8) {
+    return digits.substring(2);
+  }
+  if (digits.length === 6) {
+    return digits;
+  }
+  return dob;
 };
 
-export const formatDateTime = (dateString: string): string => {
-    if (!dateString) return '';
-    try {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString;
-        
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        
-        return `${year}-${month}-${day} ${hours}:${minutes}`;
-    } catch (e) {
-        console.error("Error formatting date:", e);
-        return dateString;
-    }
+/**
+ * Formats a ISO date string to a readable format (e.g., 05/15 14:30)
+ */
+// FIX: Added formatDateTime helper
+export const formatDateTime = (dateTimeStr: string): string => {
+  if (!dateTimeStr) return '';
+  try {
+    const d = new Date(dateTimeStr);
+    if (isNaN(d.getTime())) return dateTimeStr;
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hour = String(d.getHours()).padStart(2, '0');
+    const minute = String(d.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hour}:${minute}`;
+  } catch {
+    return dateTimeStr;
+  }
 };

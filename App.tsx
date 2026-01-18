@@ -158,21 +158,36 @@ export default function App() {
   const handleRefreshLocalFile = async () => {
     if (!fileHandle) return;
     try {
-        // 이미 핸들이 있으므로 권한 확인 후 바로 읽기
         const file = await fileHandle.getFile();
         const text = await file.text();
         const json = JSON.parse(text);
         
+        // 1. 데이터 동기화
         applyImportedData(json);
+        
+        // 2. 다른 사용자 확인
         if (json.accessLogs) {
           checkActiveUsers(json.accessLogs, userName);
-          // 접속 정보 갱신
+          
+          // 3. 나의 로그인 로그 추가 및 파일에 즉시 기록 (로그 정합성 보호 및 세션 상태 알림)
           const updatedLogs = addLog('login', userName, json.accessLogs);
           setAccessLogs(updatedLogs);
+          
+          // 현재 로컬 메모리의 최신 상태 + 파일의 최신 로그 합쳐서 저장
+          const dataToUpdate = {
+            baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            ...json, 
+            accessLogs: updatedLogs,
+            savedAt: new Date().toISOString()
+          };
+          
+          const writable = await fileHandle.createWritable();
+          await writable.write(JSON.stringify(dataToUpdate, null, 2));
+          await writable.close();
         }
-        alert("최신 데이터로 업데이트되었습니다.");
+        alert("최신 데이터를 성공적으로 다시 불러왔습니다.");
     } catch (err: any) {
-        alert("데이터를 불러오지 못했습니다. 파일을 다시 연결해주세요.\n" + err.message);
+        alert("데이터를 다시 불러오지 못했습니다. 파일을 다시 연결해주세요.\n" + err.message);
         setFileHandle(null);
     }
   };
@@ -180,6 +195,7 @@ export default function App() {
   const handleDirectLocalSave = async () => {
     if (!fileHandle) return;
     try {
+        // 현재 메모리 상태에서 최종 로그아웃 기록 생성
         const updatedLogs = addLog('logout', userName, accessLogs);
         setAccessLogs(updatedLogs);
 

@@ -22,7 +22,7 @@ interface MainViewProps {
   isCloudLoading: boolean;
   fileHandle: any;
   onConnectLocalFile: () => void;
-  onRefreshLocalFile: () => void; // 신설: 파일 재선택 없는 새로고침
+  onRefreshLocalFile: () => void; 
   onDirectLocalSave: () => void;
   accessLogs: AccessLog[];
   userName: string;
@@ -226,7 +226,7 @@ export const MainView: React.FC<MainViewProps> = ({
                         className="bg-white border border-purple-200 text-purple-700 hover:bg-purple-50 font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors"
                     >
                         <LoadIcon />
-                        <span>지금 데이터 고침</span>
+                        <span>다시 불러오기</span>
                     </button>
                 </div>
             )}
@@ -292,7 +292,7 @@ export const MainView: React.FC<MainViewProps> = ({
                 <p className="text-sm leading-relaxed mb-2 font-medium">상단에 <b>빨간색 경고창</b>이 뜨면 다른 직원이 현재 파일을 열고 작업 중이라는 뜻입니다.</p>
                 <ul className="list-disc ml-5 space-y-1 text-xs text-red-700">
                     <li>이때 저장을 하면 상대방의 작업 내용이 지워질 수 있으니 주의하세요.</li>
-                    <li>상대방이 작업을 마친 것이 확실하면 <b>[지금 데이터 고침]</b>을 눌러 상대방의 내용을 불러온 뒤 작업을 시작하세요.</li>
+                    <li>상대방이 작업을 마친 것이 확실하면 <b>[다시 불러오기]</b>를 눌러 상대방의 내용을 불러온 뒤 작업을 시작하세요.</li>
                 </ul>
             </section>
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Client, RetroactiveDataHash, RetroactivePaymentItem, RetroactiveSubmissionStatus, SubmissionData, ViewType, AccessLog } from './types';
+import type { Client, RetroactiveDataHash, RetroactivePaymentItem, RetroactiveSubmissionStatus, SubmissionData, ViewType, AccessLog, AdminSettings } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { MainView } from './components/MainView';
 import { ClientListView } from './components/ClientListView';
@@ -34,6 +34,9 @@ export default function App() {
   const [retroactiveData, setRetroactiveData] = useLocalStorage<RetroactivePaymentItem[]>('retroactiveData', []);
   const [retroactiveHashes, setRetroactiveHashes] = useLocalStorage<RetroactiveDataHash>('retroactiveHashes', {});
   const [retroactiveSubmissions, setRetroactiveSubmissions] = useLocalStorage<RetroactiveSubmissionStatus>('retroactiveSubmissions', {});
+  
+  // Admin Settings (Password from file)
+  const [adminSettings, setAdminSettings] = useLocalStorage<AdminSettings>('adminSettings', { password: '2888' });
 
   // Access Logging States
   const [accessLogs, setAccessLogs] = useLocalStorage<AccessLog[]>('accessLogs', []);
@@ -94,7 +97,6 @@ export default function App() {
       
       setAccessLogs(newLogs);
       
-      // 파일 연동 상태라면 즉시 저장
       if (fileHandle) {
         await saveToLocalWithLogs(newLogs);
       }
@@ -107,6 +109,7 @@ export default function App() {
     try {
         const dataToExport = {
             baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            adminSettings,
             accessLogs: logsToSave,
             savedAt: new Date().toISOString()
         };
@@ -162,20 +165,16 @@ export default function App() {
         const text = await file.text();
         const json = JSON.parse(text);
         
-        // 1. 데이터 동기화
         applyImportedData(json);
         
-        // 2. 다른 사용자 확인
         if (json.accessLogs) {
           checkActiveUsers(json.accessLogs, userName);
-          
-          // 3. 나의 로그인 로그 추가 및 파일에 즉시 기록 (로그 정합성 보호 및 세션 상태 알림)
           const updatedLogs = addLog('login', userName, json.accessLogs);
           setAccessLogs(updatedLogs);
           
-          // 현재 로컬 메모리의 최신 상태 + 파일의 최신 로그 합쳐서 저장
           const dataToUpdate = {
             baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            adminSettings: json.adminSettings || adminSettings,
             ...json, 
             accessLogs: updatedLogs,
             savedAt: new Date().toISOString()
@@ -195,12 +194,12 @@ export default function App() {
   const handleDirectLocalSave = async () => {
     if (!fileHandle) return;
     try {
-        // 현재 메모리 상태에서 최종 로그아웃 기록 생성
         const updatedLogs = addLog('logout', userName, accessLogs);
         setAccessLogs(updatedLogs);
 
         const dataToExport = {
             baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            adminSettings,
             accessLogs: updatedLogs,
             savedAt: new Date().toISOString()
         };
@@ -208,7 +207,6 @@ export default function App() {
         await writable.write(JSON.stringify(dataToExport, null, 2));
         await writable.close();
         
-        // 저장 후 연동 종료
         setFileHandle(null);
         alert(`성공적으로 저장되었습니다. 파일 연동이 종료됩니다.`);
     } catch (err: any) {
@@ -226,11 +224,13 @@ export default function App() {
      if (json.retroactiveHashes) setRetroactiveHashes(json.retroactiveHashes);
      if (json.retroactiveSubmissions) setRetroactiveSubmissions(json.retroactiveSubmissions);
      if (json.accessLogs) setAccessLogs(json.accessLogs);
+     if (json.adminSettings) setAdminSettings(json.adminSettings);
   };
 
   const handleExportData = () => {
     const dataToExport = {
       baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+      adminSettings,
       accessLogs: addLog('logout', userName, accessLogs),
       exportedAt: new Date().toISOString()
     };
@@ -256,6 +256,14 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleUpdateAdminSettings = (newSettings: AdminSettings) => {
+    setAdminSettings(newSettings);
+    // 즉시 파일에 반영 시도 (연동 중인 경우)
+    if (fileHandle) {
+       saveToLocalWithLogs(accessLogs);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <main>
@@ -267,6 +275,7 @@ export default function App() {
             onCloudLogin={() => {}} onCloudLogout={() => {}} onCloudSave={() => {}} onCloudLoad={() => {}} isCloudLoading={isCloudLoading}
             fileHandle={fileHandle} onConnectLocalFile={handleConnectLocalFile} onRefreshLocalFile={handleRefreshLocalFile} onDirectLocalSave={handleDirectLocalSave}
             accessLogs={accessLogs} userName={userName} setUserName={setUserName} onForceLogoutAll={handleForceLogoutAll}
+            adminSettings={adminSettings} onUpdateAdminSettings={handleUpdateAdminSettings}
           />
         ) : view === 'list' ? (
           <ClientListView clients={clients} setClients={setClients} onBack={() => setView('main')} />

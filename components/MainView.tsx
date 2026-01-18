@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import type { ViewType, AccessLog } from '../types';
-import { getMonthName, MONTHS } from '../utils/helpers';
+import type { ViewType, AccessLog, AdminSettings } from '../types';
+import { getMonthName, MONTHS, formatDateTime } from '../utils/helpers';
 import { Modal } from './common/Modal';
 
 interface MainViewProps {
@@ -28,6 +28,8 @@ interface MainViewProps {
   userName: string;
   setUserName: (name: string) => void;
   onForceLogoutAll: () => void;
+  adminSettings: AdminSettings;
+  onUpdateAdminSettings: (settings: AdminSettings) => void;
 }
 
 const Button: React.FC<{ onClick: () => void; children: React.ReactNode; icon: React.ReactElement }> = ({ onClick, children, icon }) => (
@@ -49,6 +51,7 @@ const LoadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-
 const FolderIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>;
 const LinkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>;
 const HelpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const HistoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;
 
 const YEARS = Array.from({ length: 7 }, (_, i) => 2024 + i);
@@ -58,11 +61,20 @@ export const MainView: React.FC<MainViewProps> = ({
     onExportData, onImportData,
     clientId, setClientId, msalAccount, onCloudLogin, onCloudLogout, onCloudSave, onCloudLoad, isCloudLoading,
     fileHandle, onConnectLocalFile, onRefreshLocalFile, onDirectLocalSave,
-    accessLogs, userName, setUserName, onForceLogoutAll
+    accessLogs, userName, setUserName, onForceLogoutAll,
+    adminSettings, onUpdateAdminSettings
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
+  const [tempPassword, setTempPassword] = useState('');
+  const [adminTab, setAdminTab] = useState<'logs' | 'settings'>('logs');
+
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  
   const [tempUserName, setTempUserName] = useState(userName);
 
   const getActiveUsers = () => {
@@ -92,6 +104,32 @@ export const MainView: React.FC<MainViewProps> = ({
     } else {
       alert("이름을 입력해주세요.");
     }
+  };
+
+  const handleAdminAccess = () => {
+    const correctPass = adminSettings.password || '2888';
+    if (tempPassword === correctPass) {
+      setIsAdminAuth(true);
+      setTempPassword('');
+    } else {
+      alert("비밀번호가 틀렸습니다.");
+    }
+  };
+
+  const handlePasswordChange = () => {
+    const currentPass = adminSettings.password || '2888';
+    if (oldPass !== currentPass) {
+      alert("기존 비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    if (!newPass.trim()) {
+      alert("새 비밀번호를 입력해주세요.");
+      return;
+    }
+    onUpdateAdminSettings({ ...adminSettings, password: newPass });
+    alert("비밀번호가 변경되었습니다. (데이터 파일에 저장됨)");
+    setOldPass('');
+    setNewPass('');
   };
 
   return (
@@ -127,13 +165,20 @@ export const MainView: React.FC<MainViewProps> = ({
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 flex flex-col items-end space-y-1">
+      <div className="absolute top-4 right-4 flex flex-col items-end space-y-2">
         <button 
             onClick={() => setIsHelpOpen(true)}
-            className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors bg-white px-3 py-2 rounded-full shadow-sm border border-gray-200"
+            className="flex items-center space-x-2 text-gray-500 hover:text-purple-600 transition-colors bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200"
         >
             <HelpIcon />
             <span className="text-sm font-medium">사용 설명서</span>
+        </button>
+        <button 
+            onClick={() => setIsAdminModalOpen(true)}
+            className="flex items-center space-x-2 text-gray-500 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200"
+        >
+            <HistoryIcon />
+            <span className="text-sm font-medium">접속 로그 확인</span>
         </button>
         <span className="text-[10px] text-gray-300 font-mono pr-2">Ver_1.1</span>
       </div>
@@ -274,6 +319,93 @@ export const MainView: React.FC<MainViewProps> = ({
             확인
           </button>
         </div>
+      </Modal>
+
+      <Modal isOpen={isAdminModalOpen} onClose={() => {setIsAdminModalOpen(false); setIsAdminAuth(false);}} title="관리자 보안 메뉴" size="3xl">
+          {!isAdminAuth ? (
+              <div className="flex flex-col items-center py-10">
+                  <h3 className="text-xl font-bold mb-6 text-gray-800">관리자 비밀번호를 입력하세요</h3>
+                  <input 
+                    type="password" 
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAdminAccess()}
+                    className="p-4 border-2 border-purple-200 rounded-xl w-64 text-center text-2xl tracking-widest focus:border-purple-500 focus:outline-none mb-6"
+                    autoFocus
+                  />
+                  <button onClick={handleAdminAccess} className="bg-purple-600 text-white px-10 py-3 rounded-xl font-bold hover:bg-purple-700 transition-all">
+                      인증 및 접속
+                  </button>
+              </div>
+          ) : (
+              <div>
+                  <div className="flex border-b border-gray-200 mb-6">
+                      <button 
+                        onClick={() => setAdminTab('logs')}
+                        className={`px-6 py-3 font-bold transition-all ${adminTab === 'logs' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-400'}`}
+                      >
+                          최근 접속 로그
+                      </button>
+                      <button 
+                        onClick={() => setAdminTab('settings')}
+                        className={`px-6 py-3 font-bold transition-all ${adminTab === 'settings' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-400'}`}
+                      >
+                          비밀번호 변경
+                      </button>
+                  </div>
+
+                  {adminTab === 'logs' ? (
+                      <div className="overflow-y-auto max-h-[50vh]">
+                          <table className="w-full text-sm text-left text-gray-500">
+                              <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                  <tr>
+                                      <th className="px-6 py-3">시간</th>
+                                      <th className="px-6 py-3">사용자</th>
+                                      <th className="px-6 py-3">상태</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                  {[...accessLogs].reverse().slice(0, 100).map((log, i) => (
+                                      <tr key={i} className="border-b bg-white hover:bg-gray-50">
+                                          <td className="px-6 py-3">{formatDateTime(log.timestamp)}</td>
+                                          <td className="px-6 py-3 font-semibold text-gray-800">{log.userName}</td>
+                                          <td className="px-6 py-3">
+                                              <span className={`px-2 py-1 rounded text-xs font-bold ${log.type === 'login' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                  {log.type === 'login' ? '로그인' : '로그아웃'}
+                                              </span>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                  ) : (
+                      <div className="py-10 max-w-sm mx-auto space-y-6">
+                          <div>
+                              <label className="block text-sm font-bold text-gray-700 mb-2">기존 비밀번호</label>
+                              <input 
+                                type="password" 
+                                value={oldPass}
+                                onChange={(e) => setOldPass(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-bold text-gray-700 mb-2">새 비밀번호</label>
+                              <input 
+                                type="password" 
+                                value={newPass}
+                                onChange={(e) => setNewPass(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                              />
+                          </div>
+                          <button onClick={handlePasswordChange} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md">
+                              비밀번호 업데이트
+                          </button>
+                      </div>
+                  )}
+              </div>
+          )}
       </Modal>
 
       <Modal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} title="활동지원사 서류 앱 업무 매뉴얼" size="3xl">

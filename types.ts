@@ -65,6 +65,10 @@ export interface AccessLog {
   type: 'login' | 'logout';
 }
 
+export interface AdminSettings {
+  password?: string;
+}
+
 export type ViewType = 'main' | 'list' | 'input' | 'unsubmitted' | 'retroactive';
 
 export interface OneDriveConfig {

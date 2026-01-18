@@ -48,59 +48,66 @@ export default function App() {
   const [isCloudLoading, setIsCloudLoading] = useState(false);
   const [fileHandle, setFileHandle] = useState<any>(null);
 
-  // --- 로그 추가 도우미 ---
-  const addLog = useCallback((type: 'login' | 'logout', name: string, currentLogs: AccessLog[]) => {
-    const newLog: AccessLog = {
-      timestamp: new Date().toISOString(),
-      userName: name,
-      type: type
+  // --- 세션 관리 도우미 (로그인) ---
+  const handleLoginSession = useCallback((name: string, currentLogs: AccessLog[]) => {
+    // 이미 로그인 상태(종료 시간이 없는 본인 기록)인 경우 중복 로그인 방지
+    const activeSession = currentLogs.find(log => log.userName === name && !log.logoutTime);
+    if (activeSession) return currentLogs;
+
+    const newSession: AccessLog = {
+        userName: name,
+        loginTime: new Date().toISOString(),
+        logoutTime: null
     };
-    const updatedLogs = [...currentLogs, newLog].slice(-200);
-    return updatedLogs;
+    // 로그는 계속 쌓이도록 (필요 시 여기서 slice 처리 가능)
+    return [...currentLogs, newSession];
+  }, []);
+
+  // --- 세션 관리 도우미 (로그아웃) ---
+  const handleLogoutSession = useCallback((name: string, currentLogs: AccessLog[]) => {
+      return currentLogs.map(log => {
+          if (log.userName === name && !log.logoutTime) {
+              return { ...log, logoutTime: new Date().toISOString() };
+          }
+          return log;
+      });
   }, []);
 
   // --- 접속 중인 사용자 확인 및 경고 ---
   const checkActiveUsers = useCallback((logs: AccessLog[], currentUserName: string) => {
-    const userStatus: Record<string, 'login' | 'logout'> = {};
-    [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      .forEach(log => {
-        userStatus[log.userName] = log.type;
-      });
-    
-    const othersActive = Object.entries(userStatus)
-      .filter(([name, status]) => status === 'login' && name !== currentUserName)
-      .map(([name]) => name);
+    const activeOthers = logs
+        .filter(log => !log.logoutTime && log.userName !== currentUserName)
+        .map(log => log.userName);
 
-    if (othersActive.length > 0) {
-      alert(`${othersActive.join(', ')} 직원이 접속 중인 상태입니다. 꼭 확인하신 후 작업을 진행하시기 바랍니다.`);
+    if (activeOthers.length > 0) {
+      alert(`${activeOthers.join(', ')} 직원이 접속 중인 상태입니다. 꼭 확인하신 후 작업을 진행하시기 바랍니다.`);
     }
   }, []);
 
   const handleForceLogoutAll = async () => {
     if (window.confirm("접속 중인 직원들에게 확인 후 강제 접속 종료를 해주시기 바랍니다. 계속하시겠습니까?")) {
-      const userStatus: Record<string, 'login' | 'logout'> = {};
-      accessLogs.forEach(log => userStatus[log.userName] = log.type);
-      
-      const activeOthers = Object.entries(userStatus)
-        .filter(([name, status]) => status === 'login' && name !== userName)
-        .map(([name]) => name);
+      const activeOthersCount = accessLogs.filter(log => !log.logoutTime && log.userName !== userName).length;
 
-      if (activeOthers.length === 0) {
+      if (activeOthersCount === 0) {
         alert("종료할 다른 접속자가 없습니다.");
         return;
       }
 
-      let newLogs = [...accessLogs];
-      activeOthers.forEach(name => {
-        newLogs = addLog('logout', name, newLogs);
+      const now = new Date().toISOString();
+      const updatedLogs = accessLogs.map(log => {
+        // 나 이외의 종료 기록이 없는(접속 중인) 직원들만 일괄 종료 처리
+        if (!log.logoutTime && log.userName !== userName) {
+          return { ...log, logoutTime: now };
+        }
+        return log;
       });
       
-      setAccessLogs(newLogs);
+      setAccessLogs(updatedLogs);
       
       if (fileHandle) {
-        await saveToLocalWithLogs(newLogs);
+        await saveToLocalWithLogs(updatedLogs);
       }
-      alert("다른 모든 세션이 종료 처리되었습니다.");
+      alert("다른 모든 직원의 접속이 강제 종료 처리되었습니다.");
     }
   };
 
@@ -140,7 +147,7 @@ export default function App() {
             applyImportedData(json);
             if (json.accessLogs) {
               checkActiveUsers(json.accessLogs, userName);
-              const updatedLogs = addLog('login', userName, json.accessLogs);
+              const updatedLogs = handleLoginSession(userName, json.accessLogs);
               setAccessLogs(updatedLogs);
               
               const dataToExport = {
@@ -169,7 +176,7 @@ export default function App() {
         
         if (json.accessLogs) {
           checkActiveUsers(json.accessLogs, userName);
-          const updatedLogs = addLog('login', userName, json.accessLogs);
+          const updatedLogs = handleLoginSession(userName, json.accessLogs);
           setAccessLogs(updatedLogs);
           
           const dataToUpdate = {
@@ -194,7 +201,7 @@ export default function App() {
   const handleDirectLocalSave = async () => {
     if (!fileHandle) return;
     try {
-        const updatedLogs = addLog('logout', userName, accessLogs);
+        const updatedLogs = handleLogoutSession(userName, accessLogs);
         setAccessLogs(updatedLogs);
 
         const dataToExport = {
@@ -231,7 +238,7 @@ export default function App() {
     const dataToExport = {
       baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
       adminSettings,
-      accessLogs: addLog('logout', userName, accessLogs),
+      accessLogs: handleLogoutSession(userName, accessLogs),
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });

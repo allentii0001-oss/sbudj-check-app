@@ -60,9 +60,9 @@ export type RetroactiveDataHash = {
 };
 
 export interface AccessLog {
-  timestamp: string;
   userName: string;
-  type: 'login' | 'logout';
+  loginTime: string;
+  logoutTime: string | null;
 }
 
 export interface AdminSettings {

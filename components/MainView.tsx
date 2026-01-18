@@ -77,19 +77,10 @@ export const MainView: React.FC<MainViewProps> = ({
   
   const [tempUserName, setTempUserName] = useState(userName);
 
-  const getActiveUsers = () => {
-    const userStatus: Record<string, 'login' | 'logout'> = {};
-    [...accessLogs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      .forEach(log => {
-        userStatus[log.userName] = log.type;
-      });
-    
-    return Object.entries(userStatus)
-      .filter(([name, status]) => status === 'login' && name !== userName)
-      .map(([name]) => name);
-  };
-
-  const activeUsers = getActiveUsers();
+  // 세션 기반 활성 사용자 확인
+  const activeUsers = accessLogs
+    .filter(log => !log.logoutTime && log.userName !== userName)
+    .map(log => log.userName);
 
   useEffect(() => {
     if (!userName) {
@@ -321,7 +312,7 @@ export const MainView: React.FC<MainViewProps> = ({
         </div>
       </Modal>
 
-      <Modal isOpen={isAdminModalOpen} onClose={() => {setIsAdminModalOpen(false); setIsAdminAuth(false);}} title="관리자 보안 메뉴" size="3xl">
+      <Modal isOpen={isAdminModalOpen} onClose={() => {setIsAdminModalOpen(false); setIsAdminAuth(false);}} title="관리자 보안 메뉴" size="4xl">
           {!isAdminAuth ? (
               <div className="flex flex-col items-center py-10">
                   <h3 className="text-xl font-bold mb-6 text-gray-800">관리자 비밀번호를 입력하세요</h3>
@@ -344,7 +335,7 @@ export const MainView: React.FC<MainViewProps> = ({
                         onClick={() => setAdminTab('logs')}
                         className={`px-6 py-3 font-bold transition-all ${adminTab === 'logs' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-400'}`}
                       >
-                          최근 접속 로그
+                          접속 세션 로그
                       </button>
                       <button 
                         onClick={() => setAdminTab('settings')}
@@ -357,22 +348,30 @@ export const MainView: React.FC<MainViewProps> = ({
                   {adminTab === 'logs' ? (
                       <div className="overflow-y-auto max-h-[50vh]">
                           <table className="w-full text-sm text-left text-gray-500">
-                              <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                              <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
                                   <tr>
-                                      <th className="px-6 py-3">시간</th>
-                                      <th className="px-6 py-3">사용자</th>
+                                      <th className="px-6 py-3">접속 시간</th>
+                                      <th className="px-6 py-3">종료 시간</th>
+                                      <th className="px-6 py-3">이름</th>
                                       <th className="px-6 py-3">상태</th>
                                   </tr>
                               </thead>
                               <tbody>
-                                  {[...accessLogs].reverse().slice(0, 100).map((log, i) => (
+                                  {accessLogs.map((log, i) => (
                                       <tr key={i} className="border-b bg-white hover:bg-gray-50">
-                                          <td className="px-6 py-3">{formatDateTime(log.timestamp)}</td>
+                                          <td className="px-6 py-3">{formatDateTime(log.loginTime)}</td>
+                                          <td className="px-6 py-3">{log.logoutTime ? formatDateTime(log.logoutTime) : '-'}</td>
                                           <td className="px-6 py-3 font-semibold text-gray-800">{log.userName}</td>
                                           <td className="px-6 py-3">
-                                              <span className={`px-2 py-1 rounded text-xs font-bold ${log.type === 'login' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                  {log.type === 'login' ? '로그인' : '로그아웃'}
-                                              </span>
+                                              {!log.logoutTime ? (
+                                                  <span className="px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700 animate-pulse">
+                                                      접속중
+                                                  </span>
+                                              ) : (
+                                                  <span className="px-2 py-1 rounded text-xs font-bold bg-gray-100 text-gray-600">
+                                                      종료됨
+                                                  </span>
+                                              )}
                                           </td>
                                       </tr>
                                   ))}

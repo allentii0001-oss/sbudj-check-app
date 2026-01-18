@@ -52,7 +52,6 @@ export default function App() {
       userName: name,
       type: type
     };
-    // 200개 제한, 최신 것이 뒤로 가게 관리
     const updatedLogs = [...currentLogs, newLog].slice(-200);
     return updatedLogs;
   }, []);
@@ -136,14 +135,11 @@ export default function App() {
         
         if (confirm(`"${handle.name}" 파일을 연결하시겠습니까?`)) {
             applyImportedData(json);
-            // 접속자 확인
             if (json.accessLogs) {
               checkActiveUsers(json.accessLogs, userName);
-              // 내 접속 기록 추가 후 즉시 저장
               const updatedLogs = addLog('login', userName, json.accessLogs);
               setAccessLogs(updatedLogs);
               
-              // 파일에 즉시 기록 반영 (상태 공유를 위해)
               const dataToExport = {
                 ...json,
                 accessLogs: updatedLogs,
@@ -159,10 +155,31 @@ export default function App() {
     }
   };
 
+  const handleRefreshLocalFile = async () => {
+    if (!fileHandle) return;
+    try {
+        // 이미 핸들이 있으므로 권한 확인 후 바로 읽기
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const json = JSON.parse(text);
+        
+        applyImportedData(json);
+        if (json.accessLogs) {
+          checkActiveUsers(json.accessLogs, userName);
+          // 접속 정보 갱신
+          const updatedLogs = addLog('login', userName, json.accessLogs);
+          setAccessLogs(updatedLogs);
+        }
+        alert("최신 데이터로 업데이트되었습니다.");
+    } catch (err: any) {
+        alert("데이터를 불러오지 못했습니다. 파일을 다시 연결해주세요.\n" + err.message);
+        setFileHandle(null);
+    }
+  };
+
   const handleDirectLocalSave = async () => {
     if (!fileHandle) return;
     try {
-        // 저장 시 로그에 '종료' 기록 추가
         const updatedLogs = addLog('logout', userName, accessLogs);
         setAccessLogs(updatedLogs);
 
@@ -174,7 +191,10 @@ export default function App() {
         const writable = await fileHandle.createWritable();
         await writable.write(JSON.stringify(dataToExport, null, 2));
         await writable.close();
-        alert(`저장되었습니다. (접속 종료 기록됨)`);
+        
+        // 저장 후 연동 종료
+        setFileHandle(null);
+        alert(`성공적으로 저장되었습니다. 파일 연동이 종료됩니다.`);
     } catch (err: any) {
         alert("저장 오류: " + err.message);
     }
@@ -229,7 +249,7 @@ export default function App() {
             onExportData={handleExportData} onImportData={handleImportData}
             clientId={clientId} setClientId={setClientId} msalAccount={msalAccount}
             onCloudLogin={() => {}} onCloudLogout={() => {}} onCloudSave={() => {}} onCloudLoad={() => {}} isCloudLoading={isCloudLoading}
-            fileHandle={fileHandle} onConnectLocalFile={handleConnectLocalFile} onDirectLocalSave={handleDirectLocalSave}
+            fileHandle={fileHandle} onConnectLocalFile={handleConnectLocalFile} onRefreshLocalFile={handleRefreshLocalFile} onDirectLocalSave={handleDirectLocalSave}
             accessLogs={accessLogs} userName={userName} setUserName={setUserName} onForceLogoutAll={handleForceLogoutAll}
           />
         ) : view === 'list' ? (

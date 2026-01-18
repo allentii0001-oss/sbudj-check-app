@@ -22,8 +22,8 @@ interface MainViewProps {
   isCloudLoading: boolean;
   fileHandle: any;
   onConnectLocalFile: () => void;
+  onRefreshLocalFile: () => void; // 신설: 파일 재선택 없는 새로고침
   onDirectLocalSave: () => void;
-  // Access Log Props
   accessLogs: AccessLog[];
   userName: string;
   setUserName: (name: string) => void;
@@ -57,7 +57,7 @@ export const MainView: React.FC<MainViewProps> = ({
     setView, baseMonth, setBaseMonth, baseYear, setBaseYear,
     onExportData, onImportData,
     clientId, setClientId, msalAccount, onCloudLogin, onCloudLogout, onCloudSave, onCloudLoad, isCloudLoading,
-    fileHandle, onConnectLocalFile, onDirectLocalSave,
+    fileHandle, onConnectLocalFile, onRefreshLocalFile, onDirectLocalSave,
     accessLogs, userName, setUserName, onForceLogoutAll
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -219,14 +219,14 @@ export const MainView: React.FC<MainViewProps> = ({
                         className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors shadow-sm"
                     >
                         <SaveIcon />
-                        <span>지금 저장하기 (반영)</span>
+                        <span>저장 후 연동 종료</span>
                     </button>
                     <button 
-                        onClick={onConnectLocalFile}
+                        onClick={onRefreshLocalFile}
                         className="bg-white border border-purple-200 text-purple-700 hover:bg-purple-50 font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors"
                     >
                         <LoadIcon />
-                        <span>최신 데이터로 고침</span>
+                        <span>지금 데이터 고침</span>
                     </button>
                 </div>
             )}
@@ -292,7 +292,7 @@ export const MainView: React.FC<MainViewProps> = ({
                 <p className="text-sm leading-relaxed mb-2 font-medium">상단에 <b>빨간색 경고창</b>이 뜨면 다른 직원이 현재 파일을 열고 작업 중이라는 뜻입니다.</p>
                 <ul className="list-disc ml-5 space-y-1 text-xs text-red-700">
                     <li>이때 저장을 하면 상대방의 작업 내용이 지워질 수 있으니 주의하세요.</li>
-                    <li>상대방이 작업을 마친 것이 확실하면 <b>[최신 데이터로 고침]</b>을 눌러 상대방의 내용을 불러온 뒤 작업을 시작하세요.</li>
+                    <li>상대방이 작업을 마친 것이 확실하면 <b>[지금 데이터 고침]</b>을 눌러 상대방의 내용을 불러온 뒤 작업을 시작하세요.</li>
                 </ul>
             </section>
 
@@ -311,9 +311,10 @@ export const MainView: React.FC<MainViewProps> = ({
             </section>
 
             <section className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-                <h3 className="font-bold text-lg text-purple-800 mb-2">4. 마무리: 반드시 '저장하기'</h3>
+                <h3 className="font-bold text-lg text-purple-800 mb-2">4. 마무리: '저장 후 연동 종료' 클릭 필수</h3>
                 <p className="text-sm leading-relaxed">
-                    입력한 모든 내용은 반드시 초기 화면의 <b>[지금 저장하기]</b> 버튼을 눌러야 실제 파일에 기록됩니다. 저장을 완료하면 나의 '접속 중' 상태가 해제되어 다른 동료가 안전하게 작업을 시작할 수 있습니다.
+                    입력한 모든 내용은 반드시 초기 화면의 <b>[저장 후 연동 종료]</b> 버튼을 눌러야 실제 파일에 기록됩니다. <br/>
+                    <b>저장과 동시에 파일 연동이 해제되며</b>, 나의 '접속 중' 상태가 해제되어 다른 동료가 안전하게 작업을 시작할 수 있습니다.
                 </p>
             </section>
 

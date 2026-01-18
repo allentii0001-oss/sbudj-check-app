@@ -38,8 +38,8 @@ export default function App() {
   // Admin Settings (Password from file)
   const [adminSettings, setAdminSettings] = useLocalStorage<AdminSettings>('adminSettings', { password: '2888' });
 
-  // Access Logging States
-  const [accessLogs, setAccessLogs] = useLocalStorage<AccessLog[]>('accessLogs', []);
+  // Access Logging States - Changed to useState to avoid persistent browser storage for logs
+  const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
   const [userName, setUserName] = useLocalStorage<string>('userName', '');
 
   // OneDrive/File System States
@@ -49,18 +49,39 @@ export default function App() {
   const [fileHandle, setFileHandle] = useState<any>(null);
 
   // --- 세션 관리 도우미 (로그인) ---
-  const handleLoginSession = useCallback((name: string, currentLogs: AccessLog[]) => {
-    // 이미 로그인 상태(종료 시간이 없는 본인 기록)인 경우 중복 로그인 방지
-    const activeSession = currentLogs.find(log => log.userName === name && !log.logoutTime);
-    if (activeSession) return currentLogs;
+  // forceNew: true일 경우 기존의 열린 세션을 닫고 새로 시작 (앱 최초 접속 시 등)
+  // forceNew: false일 경우 기존 세션 유지 (새로고침 시)
+  const handleLoginSession = useCallback((name: string, currentLogs: AccessLog[], forceNew: boolean = false) => {
+    const now = new Date().toISOString();
+    let logs = [...currentLogs];
 
+    // 1. 강제 갱신 모드(최초 접속)라면: 내 이름으로 된 '종료 안 된 세션'을 찾아 종료 처리(로그아웃)
+    //    브라우저를 그냥 껐다가 다시 왔을 때, 이전 기록을 닫아주기 위함
+    if (forceNew) {
+        let hasClosedSession = false;
+        logs = logs.map(log => {
+            if (log.userName === name && !log.logoutTime) {
+                hasClosedSession = true;
+                return { ...log, logoutTime: now };
+            }
+            return log;
+        });
+    }
+
+    // 2. 강제 갱신이 아니고(새로고침 등), 이미 진행 중인 세션이 있다면 유지
+    const activeSession = logs.find(log => log.userName === name && !log.logoutTime);
+    if (!forceNew && activeSession) {
+        return logs;
+    }
+
+    // 3. 새로운 접속 세션 추가 (데이터가 쌓이는 순서대로 뒤에 추가)
+    // forceNew가 true이거나, forceNew가 false여도 활성 세션이 없는 경우(파일 덮어쓰기 등으로 사라진 경우)
     const newSession: AccessLog = {
         userName: name,
-        loginTime: new Date().toISOString(),
+        loginTime: now,
         logoutTime: null
     };
-    // 로그는 계속 쌓이도록 (필요 시 여기서 slice 처리 가능)
-    return [...currentLogs, newSession];
+    return [...logs, newSession];
   }, []);
 
   // --- 세션 관리 도우미 (로그아웃) ---
@@ -85,7 +106,7 @@ export default function App() {
   }, []);
 
   const handleForceLogoutAll = async () => {
-    if (window.confirm("접속 중인 직원들에게 확인 후 강제 접속 종료를 해주시기 바랍니다. 계속하시겠습니까?")) {
+    if (window.confirm("접속 중인 다른 직원들을 강제로 로그아웃 처리하시겠습니까? (본인은 제외됩니다)")) {
       const activeOthersCount = accessLogs.filter(log => !log.logoutTime && log.userName !== userName).length;
 
       if (activeOthersCount === 0) {
@@ -107,7 +128,7 @@ export default function App() {
       if (fileHandle) {
         await saveToLocalWithLogs(updatedLogs);
       }
-      alert("다른 모든 직원의 접속이 강제 종료 처리되었습니다.");
+      alert("다른 모든 직원의 접속 세션이 강제 종료 처리되었습니다.");
     }
   };
 
@@ -145,20 +166,23 @@ export default function App() {
         
         if (confirm(`"${handle.name}" 파일을 연결하시겠습니까?`)) {
             applyImportedData(json);
-            if (json.accessLogs) {
-              checkActiveUsers(json.accessLogs, userName);
-              const updatedLogs = handleLoginSession(userName, json.accessLogs);
-              setAccessLogs(updatedLogs);
-              
-              const dataToExport = {
+            const logsFromFile = json.accessLogs || [];
+            
+            checkActiveUsers(logsFromFile, userName);
+            
+            // 앱 최초 연결 시에는 forceNew=true로 호출하여
+            // 혹시 모를 이전 좀비 세션을 닫고 새 세션을 시작합니다.
+            const updatedLogs = handleLoginSession(userName, logsFromFile, true);
+            setAccessLogs(updatedLogs);
+            
+            const dataToExport = {
                 ...json,
                 accessLogs: updatedLogs,
                 savedAt: new Date().toISOString()
-              };
-              const writable = await handle.createWritable();
-              await writable.write(JSON.stringify(dataToExport, null, 2));
-              await writable.close();
-            }
+            };
+            const writable = await handle.createWritable();
+            await writable.write(JSON.stringify(dataToExport, null, 2));
+            await writable.close();
         }
     } catch (err: any) {
         if (err.name !== 'AbortError') alert("오류: " + err.message);
@@ -173,24 +197,28 @@ export default function App() {
         const json = JSON.parse(text);
         
         applyImportedData(json);
+        const logsFromFile = json.accessLogs || [];
         
-        if (json.accessLogs) {
-          checkActiveUsers(json.accessLogs, userName);
-          const updatedLogs = handleLoginSession(userName, json.accessLogs);
-          setAccessLogs(updatedLogs);
-          
-          const dataToUpdate = {
-            baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
-            adminSettings: json.adminSettings || adminSettings,
-            ...json, 
-            accessLogs: updatedLogs,
-            savedAt: new Date().toISOString()
-          };
-          
-          const writable = await fileHandle.createWritable();
-          await writable.write(JSON.stringify(dataToUpdate, null, 2));
-          await writable.close();
-        }
+        checkActiveUsers(logsFromFile, userName);
+        
+        // 새로고침(다시 불러오기) 시에는 forceNew=false로 호출하여
+        // 현재 작업 중인 세션을 유지합니다.
+        const updatedLogs = handleLoginSession(userName, logsFromFile, false);
+        setAccessLogs(updatedLogs);
+        
+        // 내 세션이 파일에 없었다면 추가되었을 수 있으므로 파일 업데이트
+        const dataToUpdate = {
+          baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+          adminSettings: json.adminSettings || adminSettings,
+          ...json, 
+          accessLogs: updatedLogs,
+          savedAt: new Date().toISOString()
+        };
+        
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(dataToUpdate, null, 2));
+        await writable.close();
+        
         alert("최신 데이터를 성공적으로 다시 불러왔습니다.");
     } catch (err: any) {
         alert("데이터를 다시 불러오지 못했습니다. 파일을 다시 연결해주세요.\n" + err.message);
@@ -230,7 +258,7 @@ export default function App() {
      if (json.retroactiveData) setRetroactiveData(json.retroactiveData);
      if (json.retroactiveHashes) setRetroactiveHashes(json.retroactiveHashes);
      if (json.retroactiveSubmissions) setRetroactiveSubmissions(json.retroactiveSubmissions);
-     if (json.accessLogs) setAccessLogs(json.accessLogs);
+     // accessLogs는 state로 관리하므로 여기서 set하지 않고 파일 연결/갱신 로직에서 처리
      if (json.adminSettings) setAdminSettings(json.adminSettings);
   };
 
@@ -238,7 +266,7 @@ export default function App() {
     const dataToExport = {
       baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
       adminSettings,
-      accessLogs: handleLogoutSession(userName, accessLogs),
+      accessLogs: handleLogoutSession(userName, accessLogs), // 내보내기 시 내 세션 닫은 상태로 저장
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
@@ -257,7 +285,11 @@ export default function App() {
       try {
         const json = JSON.parse(event.target?.result as string);
         applyImportedData(json);
-        if (json.accessLogs) checkActiveUsers(json.accessLogs, userName);
+        if (json.accessLogs) {
+            checkActiveUsers(json.accessLogs, userName);
+            // 단순 불러오기(보기 전용)이므로 세션 로직은 적용하지 않고 그대로 표시만 함
+            setAccessLogs(json.accessLogs);
+        }
       } catch (err) { alert("파일 오류"); }
     };
     reader.readAsText(file);

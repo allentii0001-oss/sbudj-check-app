@@ -77,7 +77,7 @@ export const MainView: React.FC<MainViewProps> = ({
   
   const [tempUserName, setTempUserName] = useState(userName);
 
-  // 세션 기반 활성 사용자 확인
+  // 세션 기반 활성 사용자 확인 (종료시간이 없는 다른 사용자)
   const activeUsers = accessLogs
     .filter(log => !log.logoutTime && log.userName !== userName)
     .map(log => log.userName);

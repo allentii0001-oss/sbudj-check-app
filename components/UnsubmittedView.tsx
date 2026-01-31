@@ -117,8 +117,8 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
     }, [showOnlyUnsubmitted, sortedClients, getStatus, clientSearch, workerSearch]);
 
     return (
-        <div className="p-4 sm:p-6 md:p-8">
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
+        <div className="p-4 sm:p-6 md:p-8 flex flex-col h-[calc(100vh-4rem)]">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 space-y-4 md:space-y-0 flex-shrink-0">
                 <div className="flex items-center">
                     <button onClick={onBack} className="text-purple-600 hover:text-purple-800 mr-4">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -154,21 +154,21 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                 </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-center border-collapse">
-                        <thead className="bg-gray-100 sticky top-0 z-10">
+            <div className="bg-white rounded-lg shadow-md border border-gray-200 flex-1 overflow-hidden flex flex-col">
+                <div className="overflow-auto flex-1 w-full relative">
+                    <table className="min-w-full text-xs text-center border-collapse">
+                        <thead className="bg-gray-100 sticky top-0 z-20 shadow-sm">
                             <tr>
-                                <th rowSpan={2} className="px-2 py-3 border border-gray-200 whitespace-nowrap">이용인 이름</th>
+                                <th rowSpan={2} className="px-2 py-3 border border-gray-200 whitespace-nowrap bg-gray-100 z-30 sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">이용인 이름</th>
                                 {MONTHS.map(month => (
-                                    <th key={month} colSpan={3} className="px-2 py-3 border border-gray-200">{getMonthName(month)}</th>
+                                    <th key={month} colSpan={3} className="px-2 py-3 border border-gray-200 bg-gray-100">{getMonthName(month)}</th>
                                 ))}
                             </tr>
                             <tr>
                                 {MONTHS.map(month => (
                                     <React.Fragment key={month}>
                                         {Object.values(DOC_TYPES).map(docName => (
-                                            <th key={docName} className="px-2 py-2 border border-gray-200 font-normal min-w-[70px]">{docName}</th>
+                                            <th key={docName} className="px-2 py-2 border border-gray-200 font-normal min-w-[70px] bg-gray-100">{docName}</th>
                                         ))}
                                     </React.Fragment>
                                 ))}
@@ -177,7 +177,7 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                         <tbody>
                             {filteredClients.map(client => (
                                 <tr key={client.id} className="hover:bg-gray-50">
-                                    <td className="px-2 py-2 border border-gray-200 font-medium whitespace-nowrap">{client.name}</td>
+                                    <td className="px-2 py-2 border border-gray-200 font-medium whitespace-nowrap sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">{client.name}</td>
                                     {MONTHS.map(month => (
                                         <React.Fragment key={`${client.id}-${month}`}>
                                             {Object.keys(DOC_TYPES).map(docType => {
@@ -194,12 +194,12 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                             ))}
                         </tbody>
                     </table>
+                    {filteredClients.length === 0 && (
+                        <div className="text-center py-10 text-gray-500 absolute w-full mt-10">
+                            {showOnlyUnsubmitted ? "미제출 내역이 없습니다." : "표시할 데이터가 없습니다."}
+                        </div>
+                    )}
                 </div>
-                 {filteredClients.length === 0 && (
-                    <div className="text-center py-10 text-gray-500">
-                        {showOnlyUnsubmitted ? "미제출 내역이 없습니다." : "표시할 데이터가 없습니다."}
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -37,7 +37,10 @@ export const normalizeDob = (dobInput: any): string => {
     const year = dobInput.getFullYear();
     const month = String(dobInput.getMonth() + 1).padStart(2, '0');
     const day = String(dobInput.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    // Date 객체일 때도 미래 연도 체크 (엑셀 파싱 시 자동변환 되는 경우 대비)
+    const currentYear = new Date().getFullYear();
+    const finalYear = year > currentYear ? year - 100 : year;
+    return `${finalYear}-${month}-${day}`;
   }
 
   const dobString = String(dobInput).trim();
@@ -57,9 +60,16 @@ export const normalizeDob = (dobInput: any): string => {
   
   if (digits.length === 6) { // YYMMDD
     let year = parseInt(digits.substring(0, 2), 10);
-    // Heuristic: years less than 50 are considered 20xx, otherwise 19xx.
-    // e.g., '01' -> 2001, '98' -> 1998
-    const fullYear = year + (year < 50 ? 2000 : 1900);
+    const currentYear = new Date().getFullYear();
+    
+    // 기본적으로 2000년대로 가정하고 계산
+    let fullYear = 2000 + year;
+    
+    // 계산된 연도가 현재 연도보다 크면 1900년대로 처리 (예: 49 -> 2049(X) -> 1949(O))
+    if (fullYear > currentYear) {
+        fullYear = 1900 + year;
+    }
+    
     return `${fullYear}-${digits.substring(2, 4)}-${digits.substring(4, 6)}`;
   }
 

@@ -140,12 +140,14 @@ export const MainView: React.FC<MainViewProps> = ({
             <span className="text-xs text-gray-400">접속 중</span>
           </div>
           <div className="flex space-x-2">
-            <button 
-              onClick={() => { setTempUserName(userName); setIsUserModalOpen(true); }}
-              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors"
-            >
-              이름 변경
-            </button>
+            {!fileHandle && (
+              <button 
+                onClick={() => { setTempUserName(userName); setIsUserModalOpen(true); }}
+                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors"
+              >
+                이름 변경
+              </button>
+            )}
             <button 
               onClick={onForceLogoutAll}
               className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded border border-red-200 transition-colors"
@@ -165,7 +167,13 @@ export const MainView: React.FC<MainViewProps> = ({
             <span className="text-sm font-medium">사용 설명서</span>
         </button>
         <button 
-            onClick={() => setIsAdminModalOpen(true)}
+            onClick={() => {
+                if (!fileHandle) {
+                    alert("공유 파일 연동 시에만 사용 가능한 기능입니다.");
+                    return;
+                }
+                setIsAdminModalOpen(true);
+            }}
             className="flex items-center space-x-2 text-gray-500 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200"
         >
             <HistoryIcon />

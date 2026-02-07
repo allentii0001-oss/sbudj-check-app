@@ -88,7 +88,8 @@ const DocumentDrawerModal: React.FC<{
     retroactiveSubmissions: RetroactiveSubmissionStatus;
     setRetroactiveSubmissions: React.Dispatch<React.SetStateAction<RetroactiveSubmissionStatus>>;
     baseYear: number;
-}> = ({ isOpen, onClose, client, setClients, submissionData, onSave, retroactiveData, retroactiveSubmissions, setRetroactiveSubmissions, baseYear }) => {
+    baseMonth: number; // Added baseMonth prop
+}> = ({ isOpen, onClose, client, setClients, submissionData, onSave, retroactiveData, retroactiveSubmissions, setRetroactiveSubmissions, baseYear, baseMonth }) => {
     const [activeTab, setActiveTab] = useState(new Date().getMonth());
     const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
     const [isRetroDetailModalOpen, setIsRetroDetailModalOpen] = useState(false);
@@ -100,8 +101,15 @@ const DocumentDrawerModal: React.FC<{
         return client.supportWorkers.filter(worker => isWorkerActiveInMonth(worker, activeTab, baseYear));
     }, [client.supportWorkers, activeTab, baseYear]);
     
+    // Helper to check year
+    const isSameYear = (dateStr: string) => {
+        const d = new Date(dateStr);
+        return !isNaN(d.getTime()) && d.getFullYear() === baseYear;
+    };
+
     const handleShowRetroDetails = () => {
         const relevantItems = retroactiveData.filter(item => 
+            isSameYear(item.serviceStart) && // Filter by Base Year
             item.clientName === client.name &&
             normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
             item.month === activeTab
@@ -128,6 +136,7 @@ const DocumentDrawerModal: React.FC<{
 
         activeWorkers.forEach(worker => {
             const workerRetroItems = retroactiveData.filter(item =>
+                isSameYear(item.serviceStart) && // Filter by Base Year
                 item.clientName === client.name &&
                 normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
                 item.workerName === worker.name &&
@@ -154,6 +163,13 @@ const DocumentDrawerModal: React.FC<{
     const getApplicability = (month: number) => {
         const isActive = isClientActiveInMonth(client, month, baseYear);
         return isActive ? 'applicable' : '해당없음 (계약 기간 외)';
+    };
+
+    // Determine if input is allowed based on Base Month logic
+    const isEditable = (month: number, docType: keyof WorkerSubmissionStatus) => {
+        if (month <= baseMonth) return true; // Past or current month: All editable
+        if (month === baseMonth + 1 && docType === 'schedule') return true; // Next month: Only Schedule editable
+        return false; // Far future: Not editable
     };
 
     if (!isOpen) return null;
@@ -205,6 +221,7 @@ const DocumentDrawerModal: React.FC<{
                                         <tbody>
                                             {(Object.keys(DOC_TYPES) as Array<keyof WorkerSubmissionStatus>).map(docType => {
                                                 const hasAnyRetroItemForClientThisMonth = retroactiveData.some(item => 
+                                                    isSameYear(item.serviceStart) && // Filter by Base Year
                                                     item.clientName === client.name &&
                                                     normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
                                                     item.month === activeTab
@@ -228,13 +245,20 @@ const DocumentDrawerModal: React.FC<{
                                                         {activeWorkers.map(worker => {
                                                             const workerStatus = monthStatus.workerSubmissions[worker.id] || getInitialWorkerStatus();
                                                             const hasRetroItemForThisWorker = retroactiveData.some(item => 
+                                                                isSameYear(item.serviceStart) && // Filter by Base Year
                                                                 item.clientName === client.name &&
                                                                 normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
                                                                 item.workerName === worker.name &&
                                                                 normalizeDob(item.workerDob) === normalizeDob(worker.dob) &&
                                                                 item.month === activeTab
                                                             );
-                                                            const isDisabled = monthStatus.noWork || (docType === 'retroactivePayment' && !hasRetroItemForThisWorker);
+                                                            
+                                                            // Logic Update: Check date restriction
+                                                            const isDateAllowed = isEditable(activeTab, docType);
+                                                            
+                                                            const isDisabled = monthStatus.noWork || 
+                                                                               (docType === 'retroactivePayment' && !hasRetroItemForThisWorker) ||
+                                                                               !isDateAllowed;
                                                             
                                                             return (
                                                                 <td key={`${docType}-${worker.id}`} className="p-3 border-b border-gray-200">
@@ -242,7 +266,7 @@ const DocumentDrawerModal: React.FC<{
                                                                         type="checkbox" 
                                                                         checked={workerStatus[docType]} 
                                                                         onChange={e => handleWorkerStatusChange(worker.id, docType, e.target.checked)} 
-                                                                        className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 disabled:bg-gray-200" 
+                                                                        className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 disabled:bg-gray-200 disabled:cursor-not-allowed" 
                                                                         disabled={isDisabled} 
                                                                     />
                                                                 </td>
@@ -257,7 +281,13 @@ const DocumentDrawerModal: React.FC<{
                                 <hr className="my-6"/>
                                 <div className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
                                 <span className="text-gray-700 font-semibold">근무없음 (해당 월 전체)</span>
-                                <input type="checkbox" checked={monthStatus.noWork} onChange={e => handleNoWorkChange(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                <input 
+                                    type="checkbox" 
+                                    checked={monthStatus.noWork} 
+                                    onChange={e => handleNoWorkChange(e.target.checked)} 
+                                    className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                                    disabled={activeTab > baseMonth} // 'No Work' can only be set for past/current months
+                                />
                             </div>
                             </div>
                         )}
@@ -309,6 +339,31 @@ export const SubmissionInputView: React.FC<{
 }> = ({ clients, setClients, submissionData, setSubmissionData, retroactiveData, retroactiveSubmissions, setRetroactiveSubmissions, onBack, baseYear }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+
+    // Retrieve baseMonth from localStorage here to pass it down, or use a context.
+    // Since App.tsx manages baseMonth but doesn't pass it to SubmissionInputView props in the original interface,
+    // we need to read it. Ideally, App.tsx should pass it. 
+    // Looking at App.tsx, it renders <SubmissionInputView ... baseYear={baseYear} ... /> but not baseMonth.
+    // I will read it from localStorage directly here as a fallback or assume it's passed.
+    // To be safe and clean without changing App.tsx signature too much, I'll read from localStorage using the same hook logic or standard localStorage.
+    // However, the best way is to update App.tsx to pass baseMonth. 
+    // BUT the prompt is only about SubmissionInputView logic. 
+    // Let's check App.tsx content provided in prompt...
+    // App.tsx: <SubmissionInputView ... baseYear={baseYear} onBack={() => setView('main')} />
+    // It does NOT pass baseMonth.
+    
+    // I will use a simple localStorage read for baseMonth to avoid changing App.tsx if possible, 
+    // OR I can use the useLocalStorage hook if imported.
+    // Actually, I can just parse it safely.
+    
+    const [savedBaseMonth] = useState<number>(() => {
+        try {
+            const saved = localStorage.getItem('baseMonth');
+            return saved ? Number(JSON.parse(saved)) : new Date().getMonth();
+        } catch {
+            return new Date().getMonth();
+        }
+    });
 
     const filteredClients = useMemo(() => {
         if (!searchTerm) return [];
@@ -402,6 +457,7 @@ export const SubmissionInputView: React.FC<{
             retroactiveSubmissions={retroactiveSubmissions}
             setRetroactiveSubmissions={setRetroactiveSubmissions}
             baseYear={baseYear}
+            baseMonth={savedBaseMonth}
         />
       )}
     </div>

@@ -179,7 +179,7 @@ export const MainView: React.FC<MainViewProps> = ({
             <HistoryIcon />
             <span className="text-sm font-medium">접속 로그 확인</span>
         </button>
-        <span className="text-[10px] text-gray-300 font-mono pr-2">Ver_1.1</span>
+        <span className="text-[10px] text-gray-300 font-mono pr-2">Ver_1.2</span>
       </div>
 
       <div className="text-center mb-10">

@@ -12,6 +12,7 @@ export interface SupportWorker {
 export interface ContractPeriod {
   start: string;
   end: string;
+  active?: boolean; // Optional UI state
 }
 
 export interface Client {
@@ -40,15 +41,23 @@ export type SubmissionData = {
   };
 };
 
-export interface RetroactivePaymentItem {
-  id: string; 
-  clientName: string;
-  clientDob: string;
-  serviceStart: string;
-  serviceEnd: string;
-  workerName: string;
-  workerDob: string;
-  month: number;
+export interface PaymentItem {
+    id: string;
+    clientName: string;
+    clientDob: string;
+    serviceStart: string;
+    serviceEnd: string;
+    workerName: string;
+    workerDob: string;
+    paymentType: string; // 결제구분 (소급, 예외, 일반 등)
+    returnType: string; // 반납구분
+    reason?: string; // 소급결제사유
+    month: number;
+}
+
+export interface RetroactivePaymentItem extends PaymentItem {
+    // Inherits everything, essentially aliases for backward compatibility if needed
+    // But we will use PaymentItem mostly now.
 }
 
 export type RetroactiveSubmissionStatus = {

@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { Client, SubmissionData, RetroactivePaymentItem } from '../types';
-import { getMonthName, MONTHS, DOC_TYPES, normalizeDob, isWorkerActiveInMonth, isClientActiveInMonth, getSubmissionKey } from '../utils/helpers';
+import type { Client, SubmissionData, PaymentItem } from '../types';
+import { getMonthName, MONTHS, DOC_TYPES, normalizeDob, isWorkerActiveInMonth, isClientActiveInMonth, getSubmissionKey, isMatch } from '../utils/helpers';
 
 interface UnsubmittedViewProps {
   clients: Client[];
   submissionData: SubmissionData;
-  retroactiveData: RetroactivePaymentItem[];
+  retroactiveData: PaymentItem[];
   baseMonth: number;
   baseYear: number;
   onBack: () => void;
@@ -96,11 +96,11 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
         let result = sortedClients;
         
         if (clientSearch) {
-            result = result.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()));
+            result = result.filter(c => isMatch(c.name, clientSearch));
         }
 
         if (workerSearch) {
-            result = result.filter(c => c.supportWorkers.some(w => w.name.toLowerCase().includes(workerSearch.toLowerCase())));
+            result = result.filter(c => c.supportWorkers.some(w => isMatch(w.name, workerSearch)));
         }
 
         if (showOnlyUnsubmitted) {
@@ -130,7 +130,7 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                     <div className="relative">
                         <input 
                             type="text" 
-                            placeholder="이용인 이름 검색" 
+                            placeholder="이용인 이름 검색 (초성)" 
                             value={clientSearch}
                             onChange={(e) => setClientSearch(e.target.value)}
                             className="p-2 pl-8 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
@@ -140,7 +140,7 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                     <div className="relative">
                         <input 
                             type="text" 
-                            placeholder="지원사 이름 검색" 
+                            placeholder="지원사 이름 검색 (초성)" 
                             value={workerSearch}
                             onChange={(e) => setWorkerSearch(e.target.value)}
                             className="p-2 pl-8 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"

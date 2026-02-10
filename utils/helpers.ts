@@ -148,3 +148,79 @@ export const formatDateTime = (dateTimeStr: string): string => {
     return dateTimeStr;
   }
 };
+
+/**
+ * Hangul Choseong Search Helpers
+ */
+const CHO_HANGUL = [
+  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+];
+
+export const getChoseong = (str: string): string => {
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 44032;
+    if (code > -1 && code < 11172) {
+      result += CHO_HANGUL[Math.floor(code / 588)];
+    } else {
+      result += str.charAt(i);
+    }
+  }
+  return result;
+};
+
+export const isMatch = (target: string, keyword: string): boolean => {
+  if (!keyword) return true;
+  if (!target) return false;
+  
+  // Normal search
+  if (target.toLowerCase().includes(keyword.toLowerCase())) return true;
+  
+  // Choseong search (only if keyword is 2+ chars to prevent too many matches with single consonant)
+  if (keyword.length >= 2) {
+      const targetChoseong = getChoseong(target);
+      // keyword might be mixed, so we check if the user typed choseong or just partial text
+      // But usually, we compare keyword (assuming it's choseong) against targetChoseong
+      if (targetChoseong.includes(keyword)) return true;
+  }
+  
+  return false;
+};
+
+// Helper for Weekly Report
+export const getWeeksInMonth = (year: number, month: number) => {
+    const weeks = [];
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Find the first Monday of the month, or if the month starts on non-Monday, start from the 1st
+    // Let's define a "Week" as Monday to Sunday.
+    // However, for weekly reports, usually it's just 1st week, 2nd week etc based on calendar rows.
+    // Let's stick to standard ISO weeks logic or simple ranges.
+    // Simple logic:
+    // Week 1: 1st ~ First Sunday
+    // Week 2: Next Mon ~ Next Sun
+    // ...
+    
+    // Let's iterate from day 1 to last day
+    let current = new Date(firstDay);
+    let weekStart = new Date(current);
+    
+    let weekCount = 1;
+    
+    while (current <= lastDay) {
+        // If current is Sunday or Last Day, close the week
+        if (current.getDay() === 0 || current.getTime() === lastDay.getTime()) {
+            weeks.push({
+                weekNo: weekCount,
+                start: new Date(weekStart),
+                end: new Date(current)
+            });
+            weekCount++;
+            weekStart = new Date(current);
+            weekStart.setDate(weekStart.getDate() + 1); // Next day
+        }
+        current.setDate(current.getDate() + 1);
+    }
+    return weeks;
+};

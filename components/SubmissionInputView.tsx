@@ -1,14 +1,15 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Client, SubmissionData, RetroactivePaymentItem, WorkerSubmissionStatus, SupportWorker, RetroactiveSubmissionStatus } from '../types';
+import type { Client, SubmissionData, PaymentItem, WorkerSubmissionStatus, SupportWorker, RetroactiveSubmissionStatus } from '../types';
 import { Modal } from './common/Modal';
-import { getMonthName, MONTHS, normalizeDob, isWorkerActiveInMonth, DOC_TYPES, formatDobToYYMMDD, formatDateTime, isClientActiveInMonth, getSubmissionKey } from '../utils/helpers';
+import { getMonthName, MONTHS, normalizeDob, isWorkerActiveInMonth, DOC_TYPES, formatDobToYYMMDD, formatDateTime, isClientActiveInMonth, getSubmissionKey, isMatch, getWeeksInMonth } from '../utils/helpers';
 import { SupportWorkerModal } from './common/SupportWorkerModal';
 
+// Retroactive Detail Modal
 const RetroactiveDetailModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  items: RetroactivePaymentItem[];
+  items: PaymentItem[];
   clientName: string;
   month: number;
   checkedItems: RetroactiveSubmissionStatus;
@@ -20,17 +21,17 @@ const RetroactiveDetailModal: React.FC<{
       isOpen={isOpen}
       onClose={onClose}
       title={`${clientName} - ${getMonthName(month)} 소급결제 내역`}
-      size="5xl"
+      size="6xl"
     >
       <div className="overflow-x-auto max-h-[60vh]">
         <table className="w-full text-sm text-left text-gray-500">
           <thead className="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0">
             <tr>
               <th scope="col" className="px-4 py-3 w-12 text-center">제출</th>
-              <th scope="col" className="px-4 py-3">활동지원사 이름</th>
-              <th scope="col" className="px-4 py-3">활동지원사 생년월일</th>
+              <th scope="col" className="px-4 py-3">활동지원사</th>
               <th scope="col" className="px-4 py-3">서비스 시작</th>
               <th scope="col" className="px-4 py-3">서비스 종료</th>
+              <th scope="col" className="px-4 py-3">사유</th>
             </tr>
           </thead>
           <tbody>
@@ -51,10 +52,13 @@ const RetroactiveDetailModal: React.FC<{
                         className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
                         />
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">{item.workerName}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">{formatDobToYYMMDD(item.workerDob)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="font-semibold">{item.workerName}</div>
+                        <div className="text-xs text-gray-400">{formatDobToYYMMDD(item.workerDob)}</div>
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap">{formatDateTime(item.serviceStart)}</td>
                     <td className="px-4 py-4 whitespace-nowrap">{formatDateTime(item.serviceEnd)}</td>
+                    <td className="px-4 py-4 text-xs text-gray-600 max-w-xs break-words">{item.reason}</td>
                     </tr>
                 );
               })
@@ -68,11 +72,105 @@ const RetroactiveDetailModal: React.FC<{
           </tbody>
         </table>
       </div>
-       <div className="flex justify-end pt-4 mt-4 border-t">
-          <button type="button" onClick={onClose} className="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">닫기</button>
+       <div className="flex justify-center pt-4 mt-4 border-t">
+          <button type="button" onClick={onClose} className="rounded-md border border-gray-300 bg-white py-3 px-12 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50">닫기</button>
       </div>
     </Modal>
   );
+};
+
+// Weekly Check Modal
+const WeeklyCheckModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    client: Client;
+    year: number;
+    month: number;
+    allPayments: PaymentItem[];
+    activeWorkers: SupportWorker[];
+}> = ({ isOpen, onClose, client, year, month, allPayments, activeWorkers }) => {
+    
+    // Calculate weeks for the given month
+    const weeks = useMemo(() => getWeeksInMonth(year, month), [year, month]);
+    
+    // Per-Worker Weekly Status
+    const workersStatus = useMemo(() => {
+        // Filter payments for this client and roughly this month (optimization)
+        const clientPayments = allPayments.filter(p => 
+            p.clientName === client.name && 
+            normalizeDob(p.clientDob) === normalizeDob(client.dob)
+        );
+
+        return activeWorkers.map(worker => {
+            const workerPayments = clientPayments.filter(p => 
+                p.workerName === worker.name &&
+                normalizeDob(p.workerDob) === normalizeDob(worker.dob)
+            );
+
+            const weeksData = weeks.map(week => {
+                const hasWork = workerPayments.some(p => {
+                    const start = new Date(p.serviceStart);
+                    
+                    // Ignore '반납' or '과오' items
+                    if (p.returnType && (p.returnType.includes('반납') || p.returnType.includes('과오'))) return false;
+                    
+                    return start >= week.start && start <= week.end;
+                });
+                return { week, hasWork };
+            });
+
+            return { worker, weeksData };
+        });
+    }, [weeks, allPayments, client, activeWorkers]);
+
+    if (!isOpen) return null;
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={`${client.name} - ${year}년 ${getMonthName(month)} 주간 근무 확인`} size="4xl">
+            <div className="space-y-6">
+                <p className="text-sm text-gray-500 mb-2">
+                    전체 결제 내역(일반/소급)을 기반으로 활동지원사별 주차 근무 여부를 확인합니다.<br/>
+                    <span className="text-xs text-red-500">* '반납' 또는 '과오' 처리된 결제 내역은 근무로 인정되지 않습니다.</span>
+                </p>
+
+                {workersStatus.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">배정된 활동지원사가 없습니다.</div>
+                ) : (
+                    workersStatus.map(({ worker, weeksData }) => (
+                        <div key={worker.id} className="border rounded-lg p-4 bg-gray-50">
+                            <h3 className="font-bold text-lg text-gray-800 mb-3 flex items-center">
+                                <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm mr-2">활동지원사</span>
+                                {worker.name} 
+                                <span className="text-sm font-normal text-gray-500 ml-2">({worker.dob})</span>
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {weeksData.map((item, idx) => (
+                                    <div key={idx} className={`p-3 rounded-lg border flex justify-between items-center ${item.hasWork ? 'bg-white border-green-200 shadow-sm' : 'bg-white border-red-100 opacity-80'}`}>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-gray-700 text-sm">{item.week.weekNo}주차</span>
+                                            <span className="text-[10px] text-gray-400">
+                                                {item.week.start.getMonth()+1}/{item.week.start.getDate()}~{item.week.end.getDate()}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            {item.hasWork ? (
+                                                <span className="text-xl font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded">O</span>
+                                            ) : (
+                                                <span className="text-xl font-bold text-red-400 bg-red-50 px-2 py-0.5 rounded">X</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+            <div className="flex justify-center pt-6 mt-4 border-t">
+                <button onClick={onClose} className="rounded-md bg-purple-600 text-white py-3 px-12 font-bold hover:bg-purple-700 shadow">확인</button>
+            </div>
+        </Modal>
+    );
 };
 
 
@@ -84,16 +182,19 @@ const DocumentDrawerModal: React.FC<{
     setClients: React.Dispatch<React.SetStateAction<Client[]>>;
     submissionData: SubmissionData;
     onSave: (clientId: string, year: number, month: number, update: { workerId?: string; docType?: keyof WorkerSubmissionStatus; value?: boolean; noWork?: boolean }) => void;
-    retroactiveData: RetroactivePaymentItem[];
+    retroactiveData: PaymentItem[];
+    allPayments: PaymentItem[];
     retroactiveSubmissions: RetroactiveSubmissionStatus;
     setRetroactiveSubmissions: React.Dispatch<React.SetStateAction<RetroactiveSubmissionStatus>>;
     baseYear: number;
-    baseMonth: number; // Added baseMonth prop
-}> = ({ isOpen, onClose, client, setClients, submissionData, onSave, retroactiveData, retroactiveSubmissions, setRetroactiveSubmissions, baseYear, baseMonth }) => {
-    const [activeTab, setActiveTab] = useState(new Date().getMonth());
+    baseMonth: number; 
+}> = ({ isOpen, onClose, client, setClients, submissionData, onSave, retroactiveData, allPayments, retroactiveSubmissions, setRetroactiveSubmissions, baseYear, baseMonth }) => {
+    // Initialize activeTab with current month or baseMonth to ensure relevance
+    const [activeTab, setActiveTab] = useState(baseMonth);
     const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
     const [isRetroDetailModalOpen, setIsRetroDetailModalOpen] = useState(false);
-    const [retroItemsForDetail, setRetroItemsForDetail] = useState<RetroactivePaymentItem[]>([]);
+    const [isWeeklyCheckModalOpen, setIsWeeklyCheckModalOpen] = useState(false);
+    const [retroItemsForDetail, setRetroItemsForDetail] = useState<PaymentItem[]>([]);
 
     const getInitialWorkerStatus = (): WorkerSubmissionStatus => ({ schedule: false, weeklyReport: false, retroactivePayment: false });
 
@@ -101,10 +202,14 @@ const DocumentDrawerModal: React.FC<{
         return client.supportWorkers.filter(worker => isWorkerActiveInMonth(worker, activeTab, baseYear));
     }, [client.supportWorkers, activeTab, baseYear]);
     
-    // Helper to check year
     const isSameYear = (dateStr: string) => {
         const d = new Date(dateStr);
         return !isNaN(d.getTime()) && d.getFullYear() === baseYear;
+    };
+
+    // Helper to check for invalid payments (Returned or Error)
+    const isInvalidPayment = (item: PaymentItem) => {
+        return item.returnType && (item.returnType.includes('반납') || item.returnType.includes('과오'));
     };
 
     const handleShowRetroDetails = () => {
@@ -112,7 +217,8 @@ const DocumentDrawerModal: React.FC<{
             isSameYear(item.serviceStart) && // Filter by Base Year
             item.clientName === client.name &&
             normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
-            item.month === activeTab
+            item.month === activeTab &&
+            !isInvalidPayment(item) // Filter out '반납' or '과오' items
         );
         setRetroItemsForDetail(relevantItems);
         setIsRetroDetailModalOpen(true);
@@ -136,12 +242,13 @@ const DocumentDrawerModal: React.FC<{
 
         activeWorkers.forEach(worker => {
             const workerRetroItems = retroactiveData.filter(item =>
-                isSameYear(item.serviceStart) && // Filter by Base Year
+                isSameYear(item.serviceStart) && 
                 item.clientName === client.name &&
                 normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
                 item.workerName === worker.name &&
                 normalizeDob(item.workerDob) === normalizeDob(worker.dob) &&
-                item.month === activeTab
+                item.month === activeTab &&
+                !isInvalidPayment(item)
             );
 
             if (workerRetroItems.length > 0) {
@@ -165,11 +272,15 @@ const DocumentDrawerModal: React.FC<{
         return isActive ? 'applicable' : '해당없음 (계약 기간 외)';
     };
 
-    // Determine if input is allowed based on Base Month logic
     const isEditable = (month: number, docType: keyof WorkerSubmissionStatus) => {
-        if (month <= baseMonth) return true; // Past or current month: All editable
-        if (month === baseMonth + 1 && docType === 'schedule') return true; // Next month: Only Schedule editable
-        return false; // Far future: Not editable
+        // baseMonth is 0-indexed (Jan=0, Feb=1)
+        // Rule: Can edit past months and current month (baseMonth)
+        if (month <= baseMonth) return true; 
+        
+        // Rule: Can edit schedule for the NEXT month (baseMonth + 1)
+        if (month === baseMonth + 1 && docType === 'schedule') return true; 
+        
+        return false; 
     };
 
     if (!isOpen) return null;
@@ -221,10 +332,11 @@ const DocumentDrawerModal: React.FC<{
                                         <tbody>
                                             {(Object.keys(DOC_TYPES) as Array<keyof WorkerSubmissionStatus>).map(docType => {
                                                 const hasAnyRetroItemForClientThisMonth = retroactiveData.some(item => 
-                                                    isSameYear(item.serviceStart) && // Filter by Base Year
+                                                    isSameYear(item.serviceStart) && 
                                                     item.clientName === client.name &&
                                                     normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
-                                                    item.month === activeTab
+                                                    item.month === activeTab &&
+                                                    !isInvalidPayment(item)
                                                 );
 
                                                 return (
@@ -238,6 +350,10 @@ const DocumentDrawerModal: React.FC<{
                                                                 ) : (
                                                                     <span className="font-medium text-gray-400">{DOC_TYPES[docType]}</span>
                                                                 )
+                                                            ) : docType === 'weeklyReport' ? (
+                                                                <button onClick={() => setIsWeeklyCheckModalOpen(true)} className="text-purple-600 hover:underline font-medium">
+                                                                    {DOC_TYPES[docType]}
+                                                                </button>
                                                             ) : (
                                                                 <span className="font-medium text-gray-700">{DOC_TYPES[docType]}</span>
                                                             )}
@@ -245,15 +361,15 @@ const DocumentDrawerModal: React.FC<{
                                                         {activeWorkers.map(worker => {
                                                             const workerStatus = monthStatus.workerSubmissions[worker.id] || getInitialWorkerStatus();
                                                             const hasRetroItemForThisWorker = retroactiveData.some(item => 
-                                                                isSameYear(item.serviceStart) && // Filter by Base Year
+                                                                isSameYear(item.serviceStart) && 
                                                                 item.clientName === client.name &&
                                                                 normalizeDob(item.clientDob) === normalizeDob(client.dob) &&
                                                                 item.workerName === worker.name &&
                                                                 normalizeDob(item.workerDob) === normalizeDob(worker.dob) &&
-                                                                item.month === activeTab
+                                                                item.month === activeTab &&
+                                                                !isInvalidPayment(item)
                                                             );
                                                             
-                                                            // Logic Update: Check date restriction
                                                             const isDateAllowed = isEditable(activeTab, docType);
                                                             
                                                             const isDisabled = monthStatus.noWork || 
@@ -309,6 +425,15 @@ const DocumentDrawerModal: React.FC<{
             onItemCheck={handleRetroItemCheck}
             activeWorkers={activeWorkers}
         />
+        <WeeklyCheckModal
+            isOpen={isWeeklyCheckModalOpen}
+            onClose={() => setIsWeeklyCheckModalOpen(false)}
+            client={client}
+            year={baseYear}
+            month={activeTab}
+            allPayments={allPayments}
+            activeWorkers={activeWorkers}
+        />
         {isWorkerModalOpen && (
             <SupportWorkerModal
                 isOpen={isWorkerModalOpen}
@@ -328,46 +453,25 @@ export const SubmissionInputView: React.FC<{
     setClients: React.Dispatch<React.SetStateAction<Client[]>>;
     submissionData: SubmissionData;
     setSubmissionData: React.Dispatch<React.SetStateAction<SubmissionData>>;
-    retroactiveData: RetroactivePaymentItem[];
+    retroactiveData: PaymentItem[];
+    allPayments: PaymentItem[];
     retroactiveSubmissions: RetroactiveSubmissionStatus;
     setRetroactiveSubmissions: React.Dispatch<React.SetStateAction<RetroactiveSubmissionStatus>>;
     onBack: () => void;
     baseYear: number;
-    // Deprecated, for type compatibility
+    baseMonth: number;
+    // Deprecated
     retroactiveHashes?: any;
     setRetroactiveHashes?: any;
-}> = ({ clients, setClients, submissionData, setSubmissionData, retroactiveData, retroactiveSubmissions, setRetroactiveSubmissions, onBack, baseYear }) => {
+}> = ({ clients, setClients, submissionData, setSubmissionData, retroactiveData, allPayments, retroactiveSubmissions, setRetroactiveSubmissions, onBack, baseYear, baseMonth }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-    // Retrieve baseMonth from localStorage here to pass it down, or use a context.
-    // Since App.tsx manages baseMonth but doesn't pass it to SubmissionInputView props in the original interface,
-    // we need to read it. Ideally, App.tsx should pass it. 
-    // Looking at App.tsx, it renders <SubmissionInputView ... baseYear={baseYear} ... /> but not baseMonth.
-    // I will read it from localStorage directly here as a fallback or assume it's passed.
-    // To be safe and clean without changing App.tsx signature too much, I'll read from localStorage using the same hook logic or standard localStorage.
-    // However, the best way is to update App.tsx to pass baseMonth. 
-    // BUT the prompt is only about SubmissionInputView logic. 
-    // Let's check App.tsx content provided in prompt...
-    // App.tsx: <SubmissionInputView ... baseYear={baseYear} onBack={() => setView('main')} />
-    // It does NOT pass baseMonth.
-    
-    // I will use a simple localStorage read for baseMonth to avoid changing App.tsx if possible, 
-    // OR I can use the useLocalStorage hook if imported.
-    // Actually, I can just parse it safely.
-    
-    const [savedBaseMonth] = useState<number>(() => {
-        try {
-            const saved = localStorage.getItem('baseMonth');
-            return saved ? Number(JSON.parse(saved)) : new Date().getMonth();
-        } catch {
-            return new Date().getMonth();
-        }
-    });
+    // Removed local storage based savedBaseMonth logic. Relying purely on props.
 
     const filteredClients = useMemo(() => {
         if (!searchTerm) return [];
-        return clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        return clients.filter(c => isMatch(c.name, searchTerm));
     }, [searchTerm, clients]);
 
     const handleSelectClient = (client: Client) => {
@@ -388,7 +492,6 @@ export const SubmissionInputView: React.FC<{
 
             if (update.noWork !== undefined) {
                 currentMonthData.noWork = update.noWork;
-                // If setting noWork to true, uncheck all worker submissions for that month
                 if (update.noWork) {
                     Object.keys(currentMonthData.workerSubmissions).forEach(workerId => {
                          currentMonthData.workerSubmissions[workerId] = { schedule: false, weeklyReport: false, retroactivePayment: false };
@@ -420,7 +523,7 @@ export const SubmissionInputView: React.FC<{
         <div className="relative">
             <input 
                 type="text"
-                placeholder="이용인 이름 검색..."
+                placeholder="이용인 이름 검색 (초성 가능)..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full p-3 pr-10 text-lg border-2 border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
@@ -454,10 +557,11 @@ export const SubmissionInputView: React.FC<{
             submissionData={submissionData}
             onSave={handleSaveSubmission}
             retroactiveData={retroactiveData}
+            allPayments={allPayments}
             retroactiveSubmissions={retroactiveSubmissions}
             setRetroactiveSubmissions={setRetroactiveSubmissions}
             baseYear={baseYear}
-            baseMonth={savedBaseMonth}
+            baseMonth={baseMonth}
         />
       )}
     </div>

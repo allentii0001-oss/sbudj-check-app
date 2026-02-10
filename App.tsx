@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Client, RetroactiveDataHash, RetroactivePaymentItem, RetroactiveSubmissionStatus, SubmissionData, ViewType, AccessLog, AdminSettings } from './types';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import type { Client, RetroactiveDataHash, PaymentItem, RetroactiveSubmissionStatus, SubmissionData, ViewType, AccessLog, AdminSettings } from './types';
 import { MainView } from './components/MainView';
 import { ClientListView } from './components/ClientListView';
 import { SubmissionInputView } from './components/SubmissionInputView';
@@ -10,53 +9,51 @@ import { RetroactivePaymentView } from './components/RetroactivePaymentView';
 import { initializeMsal, signIn, signOut, uploadDataToCloud, downloadDataFromCloud } from './services/onedrive';
 import { getSubmissionKey } from './utils/helpers';
 
-const initialClients: Client[] = [
-    {
-        id: '1',
-        name: '김이용',
-        dob: '1988-05-15',
-        contractStart: '2025-01-01',
-        contractEnd: '2025-12-31',
-        familySupport: true,
-        supportWorkers: [
-            { id: 'sw1', name: '박지원', dob: '1990-01-01', servicePeriod: { start: '2025-01-01', end: '2025-12-31' } }
-        ],
-    }
-];
+// Default empty initial states (No LocalStorage)
+const initialClients: Client[] = [];
 
 export default function App() {
   const [view, setView] = useState<ViewType>('main');
-  const [baseYear, setBaseYear] = useLocalStorage<number>('baseYear', 2025);
-  const [baseMonth, setBaseMonth] = useLocalStorage<number>('baseMonth', 4); 
-
-  const [clients, setClients] = useLocalStorage<Client[]>('clients', initialClients);
-  const [submissionData, setSubmissionData] = useLocalStorage<SubmissionData>('submissionData', {});
-  const [retroactiveData, setRetroactiveData] = useLocalStorage<RetroactivePaymentItem[]>('retroactiveData', []);
-  const [retroactiveHashes, setRetroactiveHashes] = useLocalStorage<RetroactiveDataHash>('retroactiveHashes', {});
-  const [retroactiveSubmissions, setRetroactiveSubmissions] = useLocalStorage<RetroactiveSubmissionStatus>('retroactiveSubmissions', {});
   
-  // Admin Settings (Password from file)
-  const [adminSettings, setAdminSettings] = useLocalStorage<AdminSettings>('adminSettings', { password: '2888' });
+  // State management using standard useState (Memory only, lost on refresh if not saved/loaded)
+  const [baseYear, setBaseYear] = useState<number>(new Date().getFullYear());
+  const [baseMonth, setBaseMonth] = useState<number>(new Date().getMonth()); 
 
-  // Access Logging States - Changed to useState to avoid persistent browser storage for logs
+  const [clients, setClients] = useState<Client[]>([]);
+  const [submissionData, setSubmissionData] = useState<SubmissionData>({});
+  
+  // allPayments holds ALL rows from the uploaded Excel (Normal, Retro, Exception), excluding '반납'
+  const [allPayments, setAllPayments] = useState<PaymentItem[]>([]);
+  
+  const [retroactiveHashes, setRetroactiveHashes] = useState<RetroactiveDataHash>({});
+  const [retroactiveSubmissions, setRetroactiveSubmissions] = useState<RetroactiveSubmissionStatus>({});
+  
+  // Admin Settings
+  const [adminSettings, setAdminSettings] = useState<AdminSettings>({ password: '2888' });
+
+  // Access Logging States
   const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
-  const [userName, setUserName] = useLocalStorage<string>('userName', '');
+  const [userName, setUserName] = useState<string>('');
 
   // OneDrive/File System States
-  const [clientId, setClientId] = useLocalStorage<string>('onedrive_client_id', '');
+  const [clientId, setClientId] = useState<string>('');
   const [msalAccount, setMsalAccount] = useState<any>(null);
   const [isCloudLoading, setIsCloudLoading] = useState(false);
   const [fileHandle, setFileHandle] = useState<any>(null);
 
+  // Derived retroactive data for compatibility with existing views
+  // Filter allPayments for "소급" or "예외" in paymentType
+  const retroactiveData = React.useMemo(() => {
+    return allPayments.filter(item => 
+        (item.paymentType && (item.paymentType.includes('소급') || item.paymentType.includes('예외')))
+    );
+  }, [allPayments]);
+
   // --- 세션 관리 도우미 (로그인) ---
-  // forceNew: true일 경우 기존의 열린 세션을 닫고 새로 시작 (앱 최초 접속 시 등)
-  // forceNew: false일 경우 기존 세션 유지 (새로고침 시)
   const handleLoginSession = useCallback((name: string, currentLogs: AccessLog[], forceNew: boolean = false) => {
     const now = new Date().toISOString();
     let logs = [...currentLogs];
 
-    // 1. 강제 갱신 모드(최초 접속)라면: 내 이름으로 된 '종료 안 된 세션'을 찾아 종료 처리(로그아웃)
-    //    브라우저를 그냥 껐다가 다시 왔을 때, 이전 기록을 닫아주기 위함
     if (forceNew) {
         let hasClosedSession = false;
         logs = logs.map(log => {
@@ -68,14 +65,11 @@ export default function App() {
         });
     }
 
-    // 2. 강제 갱신이 아니고(새로고침 등), 이미 진행 중인 세션이 있다면 유지
     const activeSession = logs.find(log => log.userName === name && !log.logoutTime);
     if (!forceNew && activeSession) {
         return logs;
     }
 
-    // 3. 새로운 접속 세션 추가 (데이터가 쌓이는 순서대로 뒤에 추가)
-    // forceNew가 true이거나, forceNew가 false여도 활성 세션이 없는 경우(파일 덮어쓰기 등으로 사라진 경우)
     const newSession: AccessLog = {
         userName: name,
         loginTime: now,
@@ -116,7 +110,6 @@ export default function App() {
 
       const now = new Date().toISOString();
       const updatedLogs = accessLogs.map(log => {
-        // 나 이외의 종료 기록이 없는(접속 중인) 직원들만 일괄 종료 처리
         if (!log.logoutTime && log.userName !== userName) {
           return { ...log, logoutTime: now };
         }
@@ -136,7 +129,7 @@ export default function App() {
     if (!fileHandle) return;
     try {
         const dataToExport = {
-            baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            baseYear, baseMonth, clients, submissionData, allPayments, retroactiveHashes, retroactiveSubmissions,
             adminSettings,
             accessLogs: logsToSave,
             savedAt: new Date().toISOString()
@@ -170,8 +163,6 @@ export default function App() {
             
             checkActiveUsers(logsFromFile, userName);
             
-            // 앱 최초 연결 시에는 forceNew=true로 호출하여
-            // 혹시 모를 이전 좀비 세션을 닫고 새 세션을 시작합니다.
             const updatedLogs = handleLoginSession(userName, logsFromFile, true);
             setAccessLogs(updatedLogs);
             
@@ -201,14 +192,12 @@ export default function App() {
         
         checkActiveUsers(logsFromFile, userName);
         
-        // 새로고침(다시 불러오기) 시에는 forceNew=false로 호출하여
-        // 현재 작업 중인 세션을 유지합니다.
         const updatedLogs = handleLoginSession(userName, logsFromFile, false);
         setAccessLogs(updatedLogs);
         
-        // 내 세션이 파일에 없었다면 추가되었을 수 있으므로 파일 업데이트
+        // Merge data
         const dataToUpdate = {
-          baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+          baseYear, baseMonth, clients, submissionData, allPayments, retroactiveHashes, retroactiveSubmissions,
           adminSettings: json.adminSettings || adminSettings,
           ...json, 
           accessLogs: updatedLogs,
@@ -233,7 +222,7 @@ export default function App() {
         setAccessLogs(updatedLogs);
 
         const dataToExport = {
-            baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+            baseYear, baseMonth, clients, submissionData, allPayments, retroactiveHashes, retroactiveSubmissions,
             adminSettings,
             accessLogs: updatedLogs,
             savedAt: new Date().toISOString()
@@ -250,23 +239,26 @@ export default function App() {
   };
 
   const applyImportedData = (json: any) => {
-     if (!json.clients || !Array.isArray(json.clients)) return;
      if (json.baseYear) setBaseYear(json.baseYear);
      if (json.baseMonth !== undefined) setBaseMonth(json.baseMonth);
-     if (json.clients) setClients(json.clients);
+     if (json.clients && Array.isArray(json.clients)) setClients(json.clients);
      if (json.submissionData) setSubmissionData(json.submissionData);
-     if (json.retroactiveData) setRetroactiveData(json.retroactiveData);
+     // Support old retroactiveData field if allPayments is missing, otherwise use allPayments
+     if (json.allPayments) {
+         setAllPayments(json.allPayments);
+     } else if (json.retroactiveData) {
+         setAllPayments(json.retroactiveData); // Fallback for old files
+     }
      if (json.retroactiveHashes) setRetroactiveHashes(json.retroactiveHashes);
      if (json.retroactiveSubmissions) setRetroactiveSubmissions(json.retroactiveSubmissions);
-     // accessLogs는 state로 관리하므로 여기서 set하지 않고 파일 연결/갱신 로직에서 처리
      if (json.adminSettings) setAdminSettings(json.adminSettings);
   };
 
   const handleExportData = () => {
     const dataToExport = {
-      baseYear, baseMonth, clients, submissionData, retroactiveData, retroactiveHashes, retroactiveSubmissions,
+      baseYear, baseMonth, clients, submissionData, allPayments, retroactiveHashes, retroactiveSubmissions,
       adminSettings,
-      accessLogs: handleLogoutSession(userName, accessLogs), // 내보내기 시 내 세션 닫은 상태로 저장
+      accessLogs: handleLogoutSession(userName, accessLogs), 
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
@@ -287,7 +279,6 @@ export default function App() {
         applyImportedData(json);
         if (json.accessLogs) {
             checkActiveUsers(json.accessLogs, userName);
-            // 단순 불러오기(보기 전용)이므로 세션 로직은 적용하지 않고 그대로 표시만 함
             setAccessLogs(json.accessLogs);
         }
       } catch (err) { alert("파일 오류"); }
@@ -297,7 +288,6 @@ export default function App() {
 
   const handleUpdateAdminSettings = (newSettings: AdminSettings) => {
     setAdminSettings(newSettings);
-    // 즉시 파일에 반영 시도 (연동 중인 경우)
     if (fileHandle) {
        saveToLocalWithLogs(accessLogs);
     }
@@ -321,12 +311,12 @@ export default function App() {
         ) : view === 'input' ? (
           <SubmissionInputView 
             clients={clients} setClients={setClients} submissionData={submissionData} setSubmissionData={setSubmissionData}
-            retroactiveData={retroactiveData} retroactiveSubmissions={retroactiveSubmissions} setRetroactiveSubmissions={setRetroactiveSubmissions}
-            baseYear={baseYear} onBack={() => setView('main')} />
+            retroactiveData={retroactiveData} allPayments={allPayments} retroactiveSubmissions={retroactiveSubmissions} setRetroactiveSubmissions={setRetroactiveSubmissions}
+            baseYear={baseYear} baseMonth={baseMonth} onBack={() => setView('main')} />
         ) : view === 'unsubmitted' ? (
           <UnsubmittedView clients={clients} submissionData={submissionData} retroactiveData={retroactiveData} baseMonth={baseMonth} baseYear={baseYear} onBack={() => setView('main')} />
         ) : (
-          <RetroactivePaymentView retroactiveData={retroactiveData} setRetroactiveData={setRetroactiveData} onBack={() => setView('main')} />
+          <RetroactivePaymentView allPayments={allPayments} setAllPayments={setAllPayments} clients={clients} onBack={() => setView('main')} />
         )}
       </main>
     </div>

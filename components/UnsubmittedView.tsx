@@ -1,55 +1,81 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { Client, SubmissionData, PaymentItem } from '../types';
+import type { Client, SubmissionData, PaymentItem, RetroactiveSubmissionStatus, WorkerSubmissionStatus } from '../types';
 import { getMonthName, MONTHS, DOC_TYPES, normalizeDob, isWorkerActiveInMonth, isClientActiveInMonth, getSubmissionKey, isMatch } from '../utils/helpers';
+import { DocumentDrawerModal } from './DocumentDrawerModal';
 
 interface UnsubmittedViewProps {
   clients: Client[];
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   submissionData: SubmissionData;
+  setSubmissionData: React.Dispatch<React.SetStateAction<SubmissionData>>;
   retroactiveData: PaymentItem[];
+  allPayments: PaymentItem[];
   baseMonth: number;
   baseYear: number;
+  retroactiveSubmissions: RetroactiveSubmissionStatus;
+  setRetroactiveSubmissions: React.Dispatch<React.SetStateAction<RetroactiveSubmissionStatus>>;
   onBack: () => void;
 }
 
 type DocType = keyof typeof DOC_TYPES;
 
-export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submissionData, retroactiveData, baseMonth, baseYear, onBack }) => {
+export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ 
+    clients, setClients, submissionData, setSubmissionData, retroactiveData, allPayments,
+    baseMonth, baseYear, retroactiveSubmissions, setRetroactiveSubmissions, onBack 
+}) => {
     const [showOnlyUnsubmitted, setShowOnlyUnsubmitted] = useState(false);
     const [clientSearch, setClientSearch] = useState('');
     const [workerSearch, setWorkerSearch] = useState('');
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+    const [initialTab, setInitialTab] = useState<number | undefined>(undefined);
 
     const sortedClients = useMemo(() => {
         return [...clients].sort((a, b) => a.name.localeCompare(b.name));
     }, [clients]);
+
+    const handleCellClick = (client: Client, month: number) => {
+        setInitialTab(month);
+        setSelectedClient(client);
+    };
+
+    const handleNameClick = (client: Client) => {
+        setInitialTab(baseMonth);
+        setSelectedClient(client);
+    };
+
+    const handleCloseModal = () => {
+        setSelectedClient(null);
+        setInitialTab(undefined);
+    };
 
     const getStatus = useCallback((client: Client, month: number, docType: DocType) => {
         // Updated Logic: Check if client is active in this month (considering multiple contract periods)
         const isActive = isClientActiveInMonth(client, month, baseYear);
 
         if (!isActive) {
-            return { text: '미계약', color: 'bg-red-200 text-red-900' };
+            return { text: '미계약', color: 'bg-red-200 text-red-900', canClick: false };
         }
 
         if (month > baseMonth) {
              if (month === baseMonth + 1 && (docType === 'weeklyReport' || docType === 'retroactivePayment')) {
-                return { text: '해당없음', color: 'bg-gray-200 text-gray-600' };
+                return { text: '해당없음', color: 'bg-gray-200 text-gray-600', canClick: false };
             }
             if (month > baseMonth + 1) {
-                 return { text: '해당없음', color: 'bg-gray-200 text-gray-600' };
+                 return { text: '해당없음', color: 'bg-gray-200 text-gray-600', canClick: false };
             }
         }
 
         const activeWorkers = client.supportWorkers.filter(worker => isWorkerActiveInMonth(worker, month, baseYear));
         if (activeWorkers.length === 0) {
-            return { text: '지원사 X', color: 'bg-yellow-200 text-yellow-900' };
+            return { text: '지원사 X', color: 'bg-yellow-200 text-yellow-900', canClick: true };
         }
 
         const key = getSubmissionKey(client.id, baseYear, month);
         const monthStatus = submissionData[key];
 
         if (monthStatus?.noWork) {
-            return { text: '근무없음', color: 'bg-yellow-100 text-yellow-800' };
+            return { text: '근무없음', color: 'bg-yellow-100 text-yellow-800', canClick: true };
         }
 
         if (docType === 'retroactivePayment') {
@@ -70,7 +96,7 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
             );
             
             if (workersWithRetro.length === 0) {
-                return { text: '해당없음', color: 'bg-gray-200 text-gray-600' };
+                return { text: '해당없음', color: 'bg-gray-200 text-gray-600', canClick: false };
             }
             
             const allSubmitted = workersWithRetro.every(w => 
@@ -78,8 +104,8 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
             );
             
             return allSubmitted 
-                ? { text: '유', color: 'bg-green-100 text-green-800' }
-                : { text: '무', color: 'bg-red-100 text-red-800' };
+                ? { text: '유', color: 'bg-green-100 text-green-800', canClick: true }
+                : { text: '무', color: 'bg-red-100 text-red-800', canClick: true };
         }
 
         const allSubmitted = activeWorkers.every(w =>
@@ -87,8 +113,8 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
         );
 
         return allSubmitted
-            ? { text: '유', color: 'bg-green-100 text-green-800' }
-            : { text: '무', color: 'bg-red-100 text-red-800' };
+            ? { text: '유', color: 'bg-green-100 text-green-800', canClick: true }
+            : { text: '무', color: 'bg-red-100 text-red-800', canClick: true };
 
     }, [submissionData, retroactiveData, baseMonth, baseYear]);
 
@@ -107,7 +133,8 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
             result = result.filter(client => {
                 return MONTHS.some(month => {
                     return Object.keys(DOC_TYPES).some(docType => {
-                        return getStatus(client, month, docType as DocType).text === '무';
+                        const status = getStatus(client, month, docType as DocType);
+                        return status.text === '무' || status.text === '지원사 X';
                     });
                 });
             });
@@ -115,6 +142,38 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
         
         return result;
     }, [showOnlyUnsubmitted, sortedClients, getStatus, clientSearch, workerSearch]);
+
+    // Submission Save Logic (Same as SubmissionInputView)
+    const handleSaveSubmission = (
+        clientId: string, 
+        year: number,
+        month: number, 
+        update: { workerId?: string; docType?: keyof WorkerSubmissionStatus; value?: boolean; noWork?: boolean }
+    ) => {
+        const key = getSubmissionKey(clientId, year, month);
+        setSubmissionData(prev => {
+            const newSubmissionData = JSON.parse(JSON.stringify(prev)); // Deep copy
+            const currentMonthData = newSubmissionData[key] || { noWork: false, workerSubmissions: {} };
+
+            if (update.noWork !== undefined) {
+                currentMonthData.noWork = update.noWork;
+                if (update.noWork) {
+                    Object.keys(currentMonthData.workerSubmissions).forEach(workerId => {
+                         currentMonthData.workerSubmissions[workerId] = { schedule: false, weeklyReport: false, retroactivePayment: false };
+                    });
+                }
+            }
+
+            if (update.workerId && update.docType && update.value !== undefined) {
+                const currentWorkerData = currentMonthData.workerSubmissions[update.workerId] || { schedule: false, weeklyReport: false, retroactivePayment: false };
+                currentWorkerData[update.docType] = update.value;
+                currentMonthData.workerSubmissions[update.workerId] = currentWorkerData;
+            }
+
+            newSubmissionData[key] = currentMonthData;
+            return newSubmissionData;
+        });
+    };
 
     return (
         <div className="p-4 sm:p-6 md:p-8 flex flex-col h-[calc(100vh-4rem)]">
@@ -177,13 +236,22 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                         <tbody>
                             {filteredClients.map(client => (
                                 <tr key={client.id} className="hover:bg-gray-50">
-                                    <td className="px-2 py-2 border border-gray-200 font-medium whitespace-nowrap sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">{client.name}</td>
+                                    <td 
+                                        onClick={() => handleNameClick(client)}
+                                        className="px-2 py-2 border border-gray-200 font-medium whitespace-nowrap sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                                    >
+                                        {client.name}
+                                    </td>
                                     {MONTHS.map(month => (
                                         <React.Fragment key={`${client.id}-${month}`}>
                                             {Object.keys(DOC_TYPES).map(docType => {
-                                                const { text, color } = getStatus(client, month, docType as DocType);
+                                                const { text, color, canClick } = getStatus(client, month, docType as DocType);
                                                 return (
-                                                    <td key={`${client.id}-${month}-${docType}`} className={`px-1 py-2 border border-gray-200`}>
+                                                    <td 
+                                                        key={`${client.id}-${month}-${docType}`} 
+                                                        className={`px-1 py-2 border border-gray-200 ${canClick ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                                                        onClick={() => canClick && handleCellClick(client, month)}
+                                                    >
                                                         <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${color} block mx-auto w-fit whitespace-nowrap`}>{text}</span>
                                                     </td>
                                                 );
@@ -201,6 +269,24 @@ export const UnsubmittedView: React.FC<UnsubmittedViewProps> = ({ clients, submi
                     )}
                 </div>
             </div>
+            
+            {selectedClient && (
+                <DocumentDrawerModal
+                    isOpen={!!selectedClient}
+                    onClose={handleCloseModal}
+                    client={selectedClient}
+                    setClients={setClients}
+                    submissionData={submissionData}
+                    onSave={handleSaveSubmission}
+                    retroactiveData={retroactiveData}
+                    allPayments={allPayments}
+                    retroactiveSubmissions={retroactiveSubmissions}
+                    setRetroactiveSubmissions={setRetroactiveSubmissions}
+                    baseYear={baseYear}
+                    baseMonth={baseMonth}
+                    initialTab={initialTab}
+                />
+            )}
         </div>
     );
 };

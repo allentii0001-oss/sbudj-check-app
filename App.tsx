@@ -314,7 +314,13 @@ export default function App() {
             retroactiveData={retroactiveData} allPayments={allPayments} retroactiveSubmissions={retroactiveSubmissions} setRetroactiveSubmissions={setRetroactiveSubmissions}
             baseYear={baseYear} baseMonth={baseMonth} onBack={() => setView('main')} />
         ) : view === 'unsubmitted' ? (
-          <UnsubmittedView clients={clients} submissionData={submissionData} retroactiveData={retroactiveData} baseMonth={baseMonth} baseYear={baseYear} onBack={() => setView('main')} />
+          <UnsubmittedView 
+            clients={clients} setClients={setClients}
+            submissionData={submissionData} setSubmissionData={setSubmissionData}
+            retroactiveData={retroactiveData} allPayments={allPayments}
+            baseMonth={baseMonth} baseYear={baseYear} 
+            retroactiveSubmissions={retroactiveSubmissions} setRetroactiveSubmissions={setRetroactiveSubmissions}
+            onBack={() => setView('main')} />
         ) : (
           <RetroactivePaymentView allPayments={allPayments} setAllPayments={setAllPayments} clients={clients} onBack={() => setView('main')} />
         )}
